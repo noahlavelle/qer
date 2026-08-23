@@ -1,0 +1,16 @@
+apiVersion: skaffold/v4beta14
+kind: Config
+metadata:
+  name: qr
+build:
+  artifacts:
+    - image: qr-api
+      context: go
+      docker:
+        dockerfile: Dockerfile
+manifests:
+  rawYaml:
+    - manifests/dev/go-api.yaml
+
+deploy:
+  kubectl: {}
