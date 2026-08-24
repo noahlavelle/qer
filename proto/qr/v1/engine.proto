@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package qr.v1;
+
+option go_package = "github.com/noahlavelle/qr/go/gen/qr/v1;qrv1";
+
+service QueueEngine {
+  rpc CheckHealth(CheckHealthRequest) returns (CheckHealthResponse);
+}
+
+message CheckHealthRequest {}
+
+message CheckHealthResponse {
+  string status = 1;
+}

@@ -3,14 +3,21 @@ kind: Config
 metadata:
   name: qr
 build:
+  local:
+    useBuildkit: true
   artifacts:
     - image: qr-api
-      context: go
+      context: .
       docker:
-        dockerfile: Dockerfile
+        dockerfile: api/Dockerfile
+    - image: qr-engine
+      context: .
+      docker:
+        dockerfile: engine/Dockerfile
 manifests:
   rawYaml:
-    - manifests/dev/go-api.yaml
+    - manifests/dev/api.yaml
+    - manifests/dev/engine.yaml
 
 deploy:
   kubectl: {}
