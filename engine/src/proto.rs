@@ -1,5 +1,5 @@
-pub mod qr {
+pub mod qer {
     pub mod v1 {
-        tonic::include_proto!("qr.v1");
+        tonic::include_proto!("qer.v1");
     }
 }

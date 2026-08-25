@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 ARG RUST_VERSION=1.98
-ARG APP_NAME=qr-engine
+ARG APP_NAME=qer-engine
 
 FROM scratch AS skaffold-dependencies
 COPY engine/src /engine/src

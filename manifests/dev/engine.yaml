@@ -14,20 +14,20 @@ spec:
     spec:
       containers:
         - name: engine
-          image: qr-engine:dev
+          image: qer-engine:dev
           ports:
             - name: grpc
               containerPort: 50051
           livenessProbe:
             grpc:
               port: 50051
-              service: qr.v1.QueueEngine
+              service: qer.v1.QueueEngine
             initialDelaySeconds: 2
             periodSeconds: 10
           readinessProbe:
             grpc:
               port: 50051
-              service: qr.v1.QueueEngine
+              service: qer.v1.QueueEngine
             initialDelaySeconds: 2
             periodSeconds: 5
 

@@ -1,16 +1,16 @@
 apiVersion: skaffold/v4beta14
 kind: Config
 metadata:
-  name: qr
+  name: qer
 build:
   local:
     useBuildkit: true
   artifacts:
-    - image: qr-api
+    - image: qer-api
       context: .
       docker:
         dockerfile: api/Dockerfile
-    - image: qr-engine
+    - image: qer-engine
       context: .
       docker:
         dockerfile: engine/Dockerfile

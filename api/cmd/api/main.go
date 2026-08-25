@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	qrv1 "github.com/noahlavelle/qr/gen/qr/v1"
+	qerv1 "github.com/noahlavelle/qer/gen/qer/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -19,7 +19,7 @@ type healthResponse struct {
 }
 
 type engineClient struct {
-	client qrv1.QueueEngineClient
+	client qerv1.QueueEngineClient
 }
 
 type healthChecker interface {
@@ -28,14 +28,14 @@ type healthChecker interface {
 
 func newEngineClient(conn *grpc.ClientConn) *engineClient {
 	return &engineClient{
-		client: qrv1.NewQueueEngineClient(conn),
+		client: qerv1.NewQueueEngineClient(conn),
 	}
 }
 
 func (c *engineClient) getCheckHealth(ctx context.Context) (healthResponse, error) {
 	var healthResponse healthResponse
 
-	res, err := c.client.CheckHealth(ctx, &qrv1.CheckHealthRequest{})
+	res, err := c.client.CheckHealth(ctx, &qerv1.CheckHealthRequest{})
 	if err != nil {
 		return healthResponse, fmt.Errorf("get engine health: %w", err)
 	}

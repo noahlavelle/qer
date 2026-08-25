@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package qer.v1;
+
+option go_package = "github.com/noahlavelle/qer/go/gen/qer/v1;qerv1";
+
+service QueueEngine {
+  rpc CheckHealth(CheckHealthRequest) returns (CheckHealthResponse);
+
+  rpc CreateQueue(CreateQueueRequest) returns (CreateQueueResponse);
+  rpc Put(PutRequest) returns (PutResponse);
+  rpc Reserve(ReserveRequest) returns (ReserveResponse);
+  rpc Ack(AckRequest) returns (AckResponse);
+}
+
+message CheckHealthRequest {}
+message CheckHealthResponse {
+  string status = 1;
+}
+
+message CreateQueueRequest {
+  string name = 1;
+}
+message CreateQueueResponse {}
+
+message PutRequest {
+  string queue_name = 1;
+  bytes payload = 2;
+}
+message PutResponse {
+  string job_id = 1;
+}
+
+message ReserveRequest {
+  string queue_name = 1;
+  string worker_id = 2;
+}
+message ReserveResponse {
+  optional Reservation reservation = 1;
+}
+message Reservation {
+  string reservation_id = 1;
+  string job_id = 2;
+  bytes payload = 3;
+}
+
+message AckRequest {
+  string reservation_id = 1;
+}
+message AckResponse {}

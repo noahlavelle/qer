@@ -1,30 +1,18 @@
-mod proto;
-
-use proto::qr::v1::{
-    CheckHealthRequest, CheckHealthResponse,
-    queue_engine_server::{QueueEngine, QueueEngineServer},
-};
-use tonic::{Request, Response, Status, transport::Server};
+use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 
-#[derive(Default)]
-struct QueueEngineService;
+use crate::{engine::Engine, grpc::service::QueueEngineService, proto::qer::v1::queue_engine_server::QueueEngineServer};
 
-#[tonic::async_trait]
-impl QueueEngine for QueueEngineService {
-    async fn check_health(
-        &self,
-        _request: Request<CheckHealthRequest>,
-    ) -> Result<Response<CheckHealthResponse>, Status> {
-        Ok(Response::new(CheckHealthResponse {
-            status: "ok".to_string(),
-        }))
-    }
-}
+mod proto;
+pub mod engine;
+mod grpc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "0.0.0.0:50051".parse()?;
+
+    let engine = Engine::new();
+    let service = QueueEngineService::new(engine);
 
     let (health_reporter, health_service) = health_reporter();
 
@@ -36,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Server::builder()
         .add_service(health_service)
-        .add_service(QueueEngineServer::new(QueueEngineService::default()))
+        .add_service(QueueEngineServer::new(service))
         .serve(addr)
         .await?;
 

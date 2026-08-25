@@ -1,4 +1,4 @@
-module github.com/noahlavelle/qr
+module github.com/noahlavelle/qer
 
 go 1.27.0
 
