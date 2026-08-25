@@ -3,6 +3,7 @@ module github.com/noahlavelle/qer
 go 1.27.0
 
 require (
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/stretchr/testify v1.12.1
 	google.golang.org/grpc v1.83.1
 	google.golang.org/protobuf v1.36.12

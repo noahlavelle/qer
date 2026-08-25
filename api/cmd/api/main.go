@@ -10,6 +10,7 @@ import (
 	"time"
 
 	qerv1 "github.com/noahlavelle/qer/gen/qer/v1"
+	"github.com/noahlavelle/qer/internal/auth"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -46,6 +47,7 @@ func (c *engineClient) getCheckHealth(ctx context.Context) (healthResponse, erro
 
 type server struct {
 	engineClient healthChecker
+	authenticator *auth.Authenticator
 }
 
 func newServer(engineClient healthChecker) *server {
@@ -98,9 +100,19 @@ func main() {
 		engineAddress = "engine:50051"
 	}
 
+	authenticator := auth.NewAuthenticator(
+		[]byte("secret"),
+		"qer-api",
+		"qer-engine",
+		5*time.Minute,
+	)
+
 	conn, err := grpc.NewClient(
 		engineAddress,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(
+			auth.UnaryAuthInterceptor(authenticator.SignForRequest),
+		),
 	)
 	if err != nil {
 		log.Fatal(err)

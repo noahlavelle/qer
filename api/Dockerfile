@@ -16,6 +16,7 @@ WORKDIR /app
 RUN apk update && apk add --no-cache git
 
 RUN --mount=type=bind,source=api/cmd,target=cmd \
+    --mount=type=bind,source=api/internal,target=internal \
     --mount=type=bind,source=api/go.mod,target=go.mod \
     --mount=type=bind,source=api/go.sum,target=go.sum \
     --mount=type=bind,source=api/gen,target=gen \
