@@ -280,7 +280,7 @@ func (x *PutResponse) GetJobId() string {
 type ReserveRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	QueueName     string                 `protobuf:"bytes,1,opt,name=queue_name,json=queueName,proto3" json:"queue_name,omitempty"`
-	WorkerId      string                 `protobuf:"bytes,2,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	WorkerToken   string                 `protobuf:"bytes,2,opt,name=worker_token,json=workerToken,proto3" json:"worker_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -322,19 +322,16 @@ func (x *ReserveRequest) GetQueueName() string {
 	return ""
 }
 
-func (x *ReserveRequest) GetWorkerId() string {
+func (x *ReserveRequest) GetWorkerToken() string {
 	if x != nil {
-		return x.WorkerId
+		return x.WorkerToken
 	}
 	return ""
 }
 
 type ReserveResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Found         bool                   `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"`
-	ReservationId string                 `protobuf:"bytes,2,opt,name=reservation_id,json=reservationId,proto3" json:"reservation_id,omitempty"`
-	JobId         string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
-	Payload       []byte                 `protobuf:"bytes,4,opt,name=payload,proto3" json:"payload,omitempty"`
+	Reservation   *Reservation           `protobuf:"bytes,1,opt,name=reservation,proto3,oneof" json:"reservation,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -369,28 +366,67 @@ func (*ReserveResponse) Descriptor() ([]byte, []int) {
 	return file_qer_v1_engine_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *ReserveResponse) GetFound() bool {
+func (x *ReserveResponse) GetReservation() *Reservation {
 	if x != nil {
-		return x.Found
+		return x.Reservation
 	}
-	return false
+	return nil
 }
 
-func (x *ReserveResponse) GetReservationId() string {
+type Reservation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ReservationId string                 `protobuf:"bytes,1,opt,name=reservation_id,json=reservationId,proto3" json:"reservation_id,omitempty"`
+	JobId         string                 `protobuf:"bytes,2,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	Payload       []byte                 `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Reservation) Reset() {
+	*x = Reservation{}
+	mi := &file_qer_v1_engine_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Reservation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Reservation) ProtoMessage() {}
+
+func (x *Reservation) ProtoReflect() protoreflect.Message {
+	mi := &file_qer_v1_engine_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Reservation.ProtoReflect.Descriptor instead.
+func (*Reservation) Descriptor() ([]byte, []int) {
+	return file_qer_v1_engine_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *Reservation) GetReservationId() string {
 	if x != nil {
 		return x.ReservationId
 	}
 	return ""
 }
 
-func (x *ReserveResponse) GetJobId() string {
+func (x *Reservation) GetJobId() string {
 	if x != nil {
 		return x.JobId
 	}
 	return ""
 }
 
-func (x *ReserveResponse) GetPayload() []byte {
+func (x *Reservation) GetPayload() []byte {
 	if x != nil {
 		return x.Payload
 	}
@@ -406,7 +442,7 @@ type AckRequest struct {
 
 func (x *AckRequest) Reset() {
 	*x = AckRequest{}
-	mi := &file_qer_v1_engine_proto_msgTypes[8]
+	mi := &file_qer_v1_engine_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -418,7 +454,7 @@ func (x *AckRequest) String() string {
 func (*AckRequest) ProtoMessage() {}
 
 func (x *AckRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_qer_v1_engine_proto_msgTypes[8]
+	mi := &file_qer_v1_engine_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -431,7 +467,7 @@ func (x *AckRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckRequest.ProtoReflect.Descriptor instead.
 func (*AckRequest) Descriptor() ([]byte, []int) {
-	return file_qer_v1_engine_proto_rawDescGZIP(), []int{8}
+	return file_qer_v1_engine_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *AckRequest) GetReservationId() string {
@@ -449,7 +485,7 @@ type AckResponse struct {
 
 func (x *AckResponse) Reset() {
 	*x = AckResponse{}
-	mi := &file_qer_v1_engine_proto_msgTypes[9]
+	mi := &file_qer_v1_engine_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -461,7 +497,7 @@ func (x *AckResponse) String() string {
 func (*AckResponse) ProtoMessage() {}
 
 func (x *AckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_qer_v1_engine_proto_msgTypes[9]
+	mi := &file_qer_v1_engine_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -474,7 +510,7 @@ func (x *AckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckResponse.ProtoReflect.Descriptor instead.
 func (*AckResponse) Descriptor() ([]byte, []int) {
-	return file_qer_v1_engine_proto_rawDescGZIP(), []int{9}
+	return file_qer_v1_engine_proto_rawDescGZIP(), []int{10}
 }
 
 var File_qer_v1_engine_proto protoreflect.FileDescriptor
@@ -494,16 +530,18 @@ const file_qer_v1_engine_proto_rawDesc = "" +
 	"queue_name\x18\x01 \x01(\tR\tqueueName\x12\x18\n" +
 	"\apayload\x18\x02 \x01(\fR\apayload\"$\n" +
 	"\vPutResponse\x12\x15\n" +
-	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"L\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"R\n" +
 	"\x0eReserveRequest\x12\x1d\n" +
 	"\n" +
-	"queue_name\x18\x01 \x01(\tR\tqueueName\x12\x1b\n" +
-	"\tworker_id\x18\x02 \x01(\tR\bworkerId\"\x7f\n" +
-	"\x0fReserveResponse\x12\x14\n" +
-	"\x05found\x18\x01 \x01(\bR\x05found\x12%\n" +
-	"\x0ereservation_id\x18\x02 \x01(\tR\rreservationId\x12\x15\n" +
-	"\x06job_id\x18\x03 \x01(\tR\x05jobId\x12\x18\n" +
-	"\apayload\x18\x04 \x01(\fR\apayload\"3\n" +
+	"queue_name\x18\x01 \x01(\tR\tqueueName\x12!\n" +
+	"\fworker_token\x18\x02 \x01(\tR\vworkerToken\"]\n" +
+	"\x0fReserveResponse\x12:\n" +
+	"\vreservation\x18\x01 \x01(\v2\x13.qer.v1.ReservationH\x00R\vreservation\x88\x01\x01B\x0e\n" +
+	"\f_reservation\"e\n" +
+	"\vReservation\x12%\n" +
+	"\x0ereservation_id\x18\x01 \x01(\tR\rreservationId\x12\x15\n" +
+	"\x06job_id\x18\x02 \x01(\tR\x05jobId\x12\x18\n" +
+	"\apayload\x18\x03 \x01(\fR\apayload\"3\n" +
 	"\n" +
 	"AckRequest\x12%\n" +
 	"\x0ereservation_id\x18\x01 \x01(\tR\rreservationId\"\r\n" +
@@ -527,7 +565,7 @@ func file_qer_v1_engine_proto_rawDescGZIP() []byte {
 	return file_qer_v1_engine_proto_rawDescData
 }
 
-var file_qer_v1_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_qer_v1_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_qer_v1_engine_proto_goTypes = []any{
 	(*CheckHealthRequest)(nil),  // 0: qer.v1.CheckHealthRequest
 	(*CheckHealthResponse)(nil), // 1: qer.v1.CheckHealthResponse
@@ -537,25 +575,27 @@ var file_qer_v1_engine_proto_goTypes = []any{
 	(*PutResponse)(nil),         // 5: qer.v1.PutResponse
 	(*ReserveRequest)(nil),      // 6: qer.v1.ReserveRequest
 	(*ReserveResponse)(nil),     // 7: qer.v1.ReserveResponse
-	(*AckRequest)(nil),          // 8: qer.v1.AckRequest
-	(*AckResponse)(nil),         // 9: qer.v1.AckResponse
+	(*Reservation)(nil),         // 8: qer.v1.Reservation
+	(*AckRequest)(nil),          // 9: qer.v1.AckRequest
+	(*AckResponse)(nil),         // 10: qer.v1.AckResponse
 }
 var file_qer_v1_engine_proto_depIdxs = []int32{
-	0, // 0: qer.v1.QueueEngine.CheckHealth:input_type -> qer.v1.CheckHealthRequest
-	2, // 1: qer.v1.QueueEngine.CreateQueue:input_type -> qer.v1.CreateQueueRequest
-	4, // 2: qer.v1.QueueEngine.Put:input_type -> qer.v1.PutRequest
-	6, // 3: qer.v1.QueueEngine.Reserve:input_type -> qer.v1.ReserveRequest
-	8, // 4: qer.v1.QueueEngine.Ack:input_type -> qer.v1.AckRequest
-	1, // 5: qer.v1.QueueEngine.CheckHealth:output_type -> qer.v1.CheckHealthResponse
-	3, // 6: qer.v1.QueueEngine.CreateQueue:output_type -> qer.v1.CreateQueueResponse
-	5, // 7: qer.v1.QueueEngine.Put:output_type -> qer.v1.PutResponse
-	7, // 8: qer.v1.QueueEngine.Reserve:output_type -> qer.v1.ReserveResponse
-	9, // 9: qer.v1.QueueEngine.Ack:output_type -> qer.v1.AckResponse
-	5, // [5:10] is the sub-list for method output_type
-	0, // [0:5] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	8,  // 0: qer.v1.ReserveResponse.reservation:type_name -> qer.v1.Reservation
+	0,  // 1: qer.v1.QueueEngine.CheckHealth:input_type -> qer.v1.CheckHealthRequest
+	2,  // 2: qer.v1.QueueEngine.CreateQueue:input_type -> qer.v1.CreateQueueRequest
+	4,  // 3: qer.v1.QueueEngine.Put:input_type -> qer.v1.PutRequest
+	6,  // 4: qer.v1.QueueEngine.Reserve:input_type -> qer.v1.ReserveRequest
+	9,  // 5: qer.v1.QueueEngine.Ack:input_type -> qer.v1.AckRequest
+	1,  // 6: qer.v1.QueueEngine.CheckHealth:output_type -> qer.v1.CheckHealthResponse
+	3,  // 7: qer.v1.QueueEngine.CreateQueue:output_type -> qer.v1.CreateQueueResponse
+	5,  // 8: qer.v1.QueueEngine.Put:output_type -> qer.v1.PutResponse
+	7,  // 9: qer.v1.QueueEngine.Reserve:output_type -> qer.v1.ReserveResponse
+	10, // 10: qer.v1.QueueEngine.Ack:output_type -> qer.v1.AckResponse
+	6,  // [6:11] is the sub-list for method output_type
+	1,  // [1:6] is the sub-list for method input_type
+	1,  // [1:1] is the sub-list for extension type_name
+	1,  // [1:1] is the sub-list for extension extendee
+	0,  // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_qer_v1_engine_proto_init() }
@@ -563,13 +603,14 @@ func file_qer_v1_engine_proto_init() {
 	if File_qer_v1_engine_proto != nil {
 		return
 	}
+	file_qer_v1_engine_proto_msgTypes[7].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_qer_v1_engine_proto_rawDesc), len(file_qer_v1_engine_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

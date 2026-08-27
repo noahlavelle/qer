@@ -1,0 +1,470 @@
+openapi: "3.0.0"
+
+info:
+  version: 0.0.0
+  title: QER API
+  description: Authenticated public facing API for the qer service
+
+servers:
+  - url: /api/v1
+    description: QER API v1
+
+tags:
+  - name: Health
+    description: Service health and readiness endpoints.
+  - name: Workers
+    description: Worker registration and authentication endpoints.
+  - name: Queues
+    description: Queue and job management endpoints.
+
+paths:
+  /health:
+    get:
+      operationId: checkHealth
+      summary: Check service health
+      description: Check whether the QER service is healthy and able to serve requests.
+      tags:
+        - Health
+      security: []
+      responses:
+        '200':
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+        '503':
+          description: Service is unhealthy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: unhealthy
+
+  /ready:
+    get:
+      operationId: checkReady
+      summary: Check service readiness
+      description: Check whether the QER service is ready to accept requests.
+      tags:
+        - Health
+      security: []
+      responses:
+        '200':
+          description: Service is ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+              example:
+                status: ok
+        '503':
+          description: Service is unready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+              example:
+                status: unready
+
+  /workers/consumer:
+    post:
+      operationId: attachConsumer
+      summary: Attach a consumer
+      description: Register a consumer with the QER engine and issue a signed worker token scoped to consuming jobs.
+      tags:
+        - Workers
+      responses:
+        '200':
+          description: Unique signed worker token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerToken'
+              example:
+                token: eyJhbGciOiJIUzI1NiIs...
+        '401':
+          description: Missing or invalid authentication.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: unauthorized
+                message: Authentication is required.
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: internal_error
+                message: An internal server error occurred.
+
+  /workers/producer:
+    post:
+      operationId: attachProducer
+      summary: Attach a producer
+      description: Register a producer with the QER engine and issue a signed worker token scoped to producing jobs.
+      tags:
+        - Workers
+      responses:
+        '200':
+          description: Unique signed worker token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerToken'
+              example:
+                token: eyJhbGciOiJIUzI1NiIs...
+        '401':
+          description: Missing or invalid authentication.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: unauthorized
+                message: Authentication is required.
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: internal_error
+                message: An internal server error occurred.
+
+  /queues:
+    post:
+      operationId: createQueue
+      summary: Create a queue
+      description: Create a new queue with the specified name.
+      tags:
+        - Queues
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQueueRequest'
+            example:
+              name: emails
+      responses:
+        '201':
+          description: Queue created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueResponse'
+              example:
+                name: emails
+        '400':
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: invalid_request
+                message: Queue name is invalid.
+        '401':
+          description: Missing or invalid authentication.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: unauthorized
+                message: Authentication is required.
+        '409':
+          description: Queue already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: queue_exists
+                message: The queue already exists.
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: internal_error
+                message: An internal server error occurred.
+
+  /queues/{queue_name}/put:
+    post:
+      operationId: putJob
+      summary: Put a job
+      description: Add a new job to the specified queue.
+      tags:
+        - Queues
+      parameters:
+        - $ref: '#/components/parameters/QueueName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutJobRequest'
+            example:
+              payload:
+                message: hello
+                priority: 1
+      responses:
+        '202':
+          description: Job accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutJobResponse'
+              example:
+                job_id: 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: invalid_request
+                message: Job payload is invalid.
+        '401':
+          description: Missing or invalid authentication.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: unauthorized
+                message: Authentication is required.
+        '403':
+          description: Worker is not authorized to put jobs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: forbidden
+                message: Worker is not authorized to put jobs.
+        '404':
+          description: Queue does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: queue_not_found
+                message: The specified queue does not exist.
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: internal_error
+                message: An internal server error occurred.
+
+  /queues/{queue_name}/reserve:
+    post:
+      operationId: reserveJob
+      summary: Reserve a job
+      description: Reserve the next available job from the specified queue.
+      tags:
+        - Queues
+      parameters:
+        - $ref: '#/components/parameters/QueueName'
+      responses:
+        '200':
+          description: Job reserved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReserveJobResponse'
+              example:
+                job_id: 550e8400-e29b-41d4-a716-446655440000
+                lease_id: 550e8400-e29b-41d4-a716-446655440001
+                payload:
+                  message: hello
+                  priority: 1
+        '204':
+          description: No jobs are currently available.
+        '401':
+          description: Missing or invalid authentication.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: unauthorized
+                message: Authentication is required.
+        '403':
+          description: Worker is not authorized to reserve jobs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: forbidden
+                message: Worker is not authorized to reserve jobs.
+        '404':
+          description: Queue does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: queue_not_found
+                message: The specified queue does not exist.
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: internal_error
+                message: An internal server error occurred.
+
+components:
+  parameters:
+    QueueName:
+      name: queue_name
+      in: path
+      required: true
+      description: Name of the queue to operate on.
+      schema:
+        type: string
+
+  schemas:
+    HealthResponse:
+      type: object
+      description: Response describing the health status of the QER service.
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          description: Current health status of the service.
+          enum:
+            - ok
+            - unhealthy
+
+    ReadyResponse:
+      type: object
+      description: Response describing the readiness status of the QER service.
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          description: Current readiness status of the service.
+          enum:
+            - ok
+            - unready
+
+    WorkerToken:
+      type: object
+      description: Signed JWT representing an ephemeral worker identity.
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          description: Signed JWT used to authenticate worker requests.
+
+    CreateQueueRequest:
+      type: object
+      description: Request to create a new queue.
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Name to assign to the new queue.
+
+    QueueResponse:
+      type: object
+      description: Representation of a queue.
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Name of the queue.
+
+    PutJobRequest:
+      type: object
+      description: Request containing the payload of a job to enqueue.
+      required:
+        - payload
+      properties:
+        payload:
+          type: object
+          description: Arbitrary JSON object containing the job payload.
+          additionalProperties: true
+
+    PutJobResponse:
+      type: object
+      description: Response returned after a job has been accepted by a queue.
+      required:
+        - job_id
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          description: Unique identifier assigned to the queued job.
+
+    ReserveJobResponse:
+      type: object
+      description: Response containing a reserved job and its lease identifier.
+      required:
+        - job_id
+        - lease_id
+        - payload
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          description: Unique identifier of the reserved job.
+        lease_id:
+          type: string
+          format: uuid
+          description: Unique identifier of the lease associated with the reservation.
+        payload:
+          type: object
+          description: Arbitrary JSON object containing the job payload.
+          additionalProperties: true
+
+    ErrorResponse:
+      type: object
+      description: Error returned by the QER API.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code.
+        message:
+          type: string
+          description: Human-readable description of the error.
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - BearerAuth: []

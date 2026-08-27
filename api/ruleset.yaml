@@ -1,0 +1,78 @@
+extends:
+  - '@ibm-cloud/openapi-ruleset'
+
+rules:
+  # ------------------------------------------------------------
+  # API metadata
+  # ------------------------------------------------------------
+
+  # QER controls its own versioning strategy.
+  ibm-major-version-in-path: off
+
+  # We don't require IBM's server URL convention.
+  oas3-api-servers: off
+
+  # Tags are useful, but don't make them mandatory at the
+  # document level.
+  openapi-tags: off
+
+  # ------------------------------------------------------------
+  # Operations
+  # ------------------------------------------------------------
+
+  # We use camelCase operation IDs because they map naturally
+  # to generated Go client/server code.
+  ibm-operationid-casing-convention: off
+  ibm-operationid-naming-convention: off
+
+  # Summaries are useful documentation, but don't require them
+  # as an IBM-specific convention.
+  ibm-operation-summary: off
+
+  # Descriptions are still useful, but don't make every operation
+  # fail validation because of their absence.
+  operation-description: off
+
+  # Tags remain optional on individual operations.
+  operation-tags: off
+
+  # ------------------------------------------------------------
+  # Response examples
+  # ------------------------------------------------------------
+
+  # Examples are useful but shouldn't be mandatory for every
+  # successful response.
+  ibm-success-response-example: off
+
+  # ------------------------------------------------------------
+  # String constraints
+  # ------------------------------------------------------------
+
+  # Don't impose IBM's requirement that every string schema
+  # explicitly define pattern/min/max constraints.
+  ibm-string-attributes: off
+
+  # ------------------------------------------------------------
+  # Schema documentation
+  # ------------------------------------------------------------
+
+  # Descriptions are encouraged by the project, but aren't
+  # required on every schema/property.
+  ibm-schema-description: off
+  ibm-property-description: off
+
+  # ------------------------------------------------------------
+  # Error response conventions
+  # ------------------------------------------------------------
+
+  # QER uses its own ErrorResponse model rather than IBM's
+  # trace/errors container convention.
+  ibm-error-response-schemas: off
+
+  # ------------------------------------------------------------
+  # Dictionary/object conventions
+  # ------------------------------------------------------------
+
+  # QER deliberately supports arbitrary JSON job payloads.
+  # The queue shouldn't impose a domain-specific payload schema.
+  ibm-well-defined-dictionaries: off

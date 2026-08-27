@@ -2,96 +2,79 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"time"
 
-	qerv1 "github.com/noahlavelle/qer/gen/qer/v1"
+	"github.com/go-chi/chi/v5"
+	"github.com/noahlavelle/qer/gen/openapi"
 	"github.com/noahlavelle/qer/internal/auth"
+	"github.com/noahlavelle/qer/internal/server"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
-type healthResponse struct {
-	Status string `json:"status"`
-}
+type workerTokenKey struct {}
 
-type engineClient struct {
-	client qerv1.QueueEngineClient
-}
+func WorkerTokenMiddleware(
+	next openapi.StrictHandlerFunc,
+	operationID string,
+) openapi.StrictHandlerFunc {
+	return func(
+		ctx context.Context,
+		w http.ResponseWriter,
+		r* http.Request,
+		request any,
+	) (any, error) {
+		switch operationID {
+		case "createQueue", "putJob", "reserveJob", "ackJob":
+			token := r.Header.Get("Authorization")
+			if token == "" {
+				return nil, fmt.Errorf("missing worker authorization")
+			}
 
-type healthChecker interface {
-	getCheckHealth(context.Context) (healthResponse, error)
-}
+			ctx = context.WithValue(
+				ctx,
+				workerTokenKey{},
+				token,
+			)
+		}
 
-func newEngineClient(conn *grpc.ClientConn) *engineClient {
-	return &engineClient{
-		client: qerv1.NewQueueEngineClient(conn),
+		return next(ctx, w, r, request)
 	}
 }
 
-func (c *engineClient) getCheckHealth(ctx context.Context) (healthResponse, error) {
-	var healthResponse healthResponse
+func WorkerTokenInterceptor(
+	ctx context.Context,
+	method string,
+	req any,
+	reply any,
+	conn *grpc.ClientConn,
+	invoker grpc.UnaryInvoker,
+	opts ...grpc.CallOption,
+) error {
+	if method != "/qer.v1.QueueEngine/CheckHealth" {
+		token, ok := ctx.Value(workerTokenKey{}).(string)
+		if !ok {
+			return status.Error(
+				codes.Unauthenticated,
+				"missing worker token",
+			)
+		}
 
-	res, err := c.client.CheckHealth(ctx, &qerv1.CheckHealthRequest{})
-	if err != nil {
-		return healthResponse, fmt.Errorf("get engine health: %w", err)
+		ctx = metadata.AppendToOutgoingContext(
+			ctx,
+			"authorization",
+			token,
+		)
 	}
 
-	healthResponse.Status = res.GetStatus()
-	return healthResponse, nil
-}
-
-type server struct {
-	engineClient healthChecker
-	authenticator *auth.Authenticator
-}
-
-func newServer(engineClient healthChecker) *server {
-	return &server{
-		engineClient: engineClient,
-	}
-}
-
-func (s *server) healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	response := healthResponse{
-		Status: "ok",
-	}
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
-		return
-	}
-}
-
-func (s *server) readyHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-	defer cancel()
-
-	response, err := s.engineClient.getCheckHealth(ctx)
-	if err != nil {
-		http.Error(w, "engine unavailable", http.StatusInternalServerError)
-		return
-	}
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
-		return
-	}
-}
-
-func (s *server) routes() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", s.healthHandler)
-	mux.HandleFunc("/ready", s.readyHandler)
-	return mux
+	return invoker(ctx, method, req, reply, conn, opts...)
 }
 
 func main() {
@@ -100,6 +83,17 @@ func main() {
 		engineAddress = "engine:50051"
 	}
 
+	conn, err := grpc.NewClient(
+		engineAddress,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(WorkerTokenInterceptor),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+
+	engineClient := server.NewEngineClient(conn)
 	authenticator := auth.NewAuthenticator(
 		[]byte("secret"),
 		"qer-api",
@@ -107,29 +101,19 @@ func main() {
 		5*time.Minute,
 	)
 
-	conn, err := grpc.NewClient(
-		engineAddress,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(
-			auth.UnaryAuthInterceptor(authenticator.SignForRequest),
-		),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Close()
+	server := server.NewServer(engineClient, authenticator)
+	handler := openapi.NewStrictHandler(server, []openapi.StrictMiddlewareFunc{
+		WorkerTokenMiddleware,
+	})
 
-	engineClient := newEngineClient(conn)
-	srv := newServer(engineClient)
-
-	httpServer := &http.Server{
-		Addr:    ":8080",
-		Handler: srv.routes(),
+	r := chi.NewRouter()
+	h := openapi.HandlerFromMux(handler, r)
+	s := &http.Server{
+		Handler: h,
+		Addr:    "0.0.0.0:8080",
 	}
 
 	log.Println("API listening on :8080")
 
-	if err := httpServer.ListenAndServe(); err != nil {
-		log.Fatal(err)
-	}
+	log.Fatal(s.ListenAndServe())
 }

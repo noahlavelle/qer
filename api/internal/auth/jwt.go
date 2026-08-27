@@ -12,7 +12,6 @@ import (
 )
 
 type Claims struct {
-	WorkerID string   `json:"worker_id"`
 	Scopes   []string `json:"scopes"`
 	jwt.RegisteredClaims
 }
@@ -38,35 +37,21 @@ func NewAuthenticator(
 	}
 }
 
-func (a Authenticator) SignForRequest(
-	ctx context.Context,
-	method string,
-	request any,
-) (string, error) {
-	workerID := "0001"
-
-	return a.sign(
-		workerID,
-		[]string{"testscope"},
-	)
-}
-
-func (a *Authenticator) sign(
-	workerID string,
+func (a *Authenticator) SignWithScopes(
+	subject string,
 	scopes []string,
 ) (string, error) {
 	now := time.Now()
 
 	claims := Claims{
-		WorkerID:  workerID,
-		Scopes: scopes,
-		ExpiresAt:  jwt.NewNumericDate(now.Add(a.ttl)),
-		IssuedAt:   jwt.NewNumericDate(now),
-		NotBefore:  jwt.NewNumericDate(now),
-		ID:         uuid.New().String(),
-		Issuer:     a.issuer,
-		Subject:    workerID,
-		Audience: 	[]string{a.audience},
+		Subject:   subject,
+		Scopes:    scopes,
+		ExpiresAt: jwt.NewNumericDate(now.Add(a.ttl)),
+		IssuedAt:  jwt.NewNumericDate(now),
+		NotBefore: jwt.NewNumericDate(now),
+		ID:        uuid.New().String(),
+		Issuer:    a.issuer,
+		Audience:  []string{a.audience},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -106,9 +91,9 @@ func UnaryAuthInterceptor(
 				ctx,
 				"authorization",
 				"Bearer "+token,
-			)
+				)
 
 			return invoker(ctx, method, req, reply, conn, opts...)
 
-	}
+		}
 }

@@ -74,7 +74,7 @@ impl QueueEngine for QueueEngineService {
         let queue_id = QueueID::new(request.queue_name)
             .map_err(|err| Status::invalid_argument(err.to_string()))?;
 
-        let worker_id = WorkerID::new(request.worker_id)
+        let worker_id = WorkerID::new(request.worker_token)
             .map_err(|err| Status::invalid_argument(err.to_string()))?;
 
         let reservation = self.engine
