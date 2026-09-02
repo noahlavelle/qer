@@ -2,7 +2,7 @@ use tonic::{Request, Response, Status};
 
 use crate::{
     engine::{Engine, QueueID, ReservationID, WorkerID}, grpc::error::to_status, proto::qer::{self, v1::{
-        AckRequest, AckResponse, CheckHealthRequest, CheckHealthResponse, CreateQueueRequest, CreateQueueResponse, PutRequest, PutResponse, ReserveRequest, ReserveResponse, queue_engine_server::QueueEngine,
+        AckRequest, AckResponse, CreateQueueRequest, CreateQueueResponse, PutRequest, PutResponse, ReserveRequest, ReserveResponse, queue_engine_server::QueueEngine,
     }},
 };
 
@@ -20,15 +20,6 @@ impl QueueEngineService {
 
 #[tonic::async_trait]
 impl QueueEngine for QueueEngineService {
-    async fn check_health(
-        &self,
-        _request: Request<CheckHealthRequest>,
-    ) -> Result<Response<CheckHealthResponse>, Status> {
-        Ok(Response::new(CheckHealthResponse {
-            status: "ok".to_string(),
-        }))
-    }
-
     async fn create_queue(
         &self,
         request: Request<CreateQueueRequest>
@@ -74,7 +65,7 @@ impl QueueEngine for QueueEngineService {
         let queue_id = QueueID::new(request.queue_name)
             .map_err(|err| Status::invalid_argument(err.to_string()))?;
 
-        let worker_id = WorkerID::new(request.worker_token)
+        let worker_id = WorkerID::new("placeholder")
             .map_err(|err| Status::invalid_argument(err.to_string()))?;
 
         let reservation = self.engine

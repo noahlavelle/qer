@@ -1,14 +1,11 @@
 package auth
 
 import (
-	"context"
 	"fmt"
 	"time"
 	"uuid"
 
 	"github.com/golang-jwt/jwt/v5"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 )
 
 type Claims struct {
@@ -62,38 +59,4 @@ func (a *Authenticator) SignWithScopes(
 	}
 
 	return signed, nil
-}
-
-type TokenSource func(
-	ctx context.Context,
-	method string,
-	request any,
-) (string, error)
-
-func UnaryAuthInterceptor(
-	tokenSource TokenSource,
-) grpc.UnaryClientInterceptor {
-	return func(
-		ctx context.Context,
-		method string,
-		req any,
-		reply any,
-		conn *grpc.ClientConn,
-		invoker grpc.UnaryInvoker,
-		opts ...grpc.CallOption,
-	) error {
-			token, err := tokenSource(ctx, method, req)
-			if err != nil {
-				return fmt.Errorf("create auth token: %w", err)
-			}
-
-			ctx = metadata.AppendToOutgoingContext(
-				ctx,
-				"authorization",
-				"Bearer "+token,
-				)
-
-			return invoker(ctx, method, req, reply, conn, opts...)
-
-		}
 }

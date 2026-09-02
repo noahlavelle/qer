@@ -1,6 +1,0 @@
-{
-	"devDependencies": {
-		"@ibm-cloud/openapi-ruleset": "^1.33.13",
-		"ibm-openapi-validator": "^1.38.2"
-	}
-}

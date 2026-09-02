@@ -147,6 +147,8 @@ paths:
       description: Create a new queue with the specified name.
       tags:
         - Queues
+      security:
+        - WorkerTokenAuth: []
       requestBody:
         required: true
         content:
@@ -208,6 +210,8 @@ paths:
       description: Add a new job to the specified queue.
       tags:
         - Queues
+      security:
+        - WorkerTokenAuth: []
       parameters:
         - $ref: '#/components/parameters/QueueName'
       requestBody:
@@ -282,6 +286,8 @@ paths:
       description: Reserve the next available job from the specified queue.
       tags:
         - Queues
+      security:
+        - WorkerTokenAuth: []
       parameters:
         - $ref: '#/components/parameters/QueueName'
       responses:
@@ -326,6 +332,74 @@ paths:
               example:
                 code: queue_not_found
                 message: The specified queue does not exist.
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: internal_error
+                message: An internal server error occurred.
+
+  /queues/{queue_name}/ack:
+    post:
+      operationId: ackJob
+      summary: Acknowledge a job
+      description: Acknowledge a previously reserved job, marking it as complete and releasing its lease.
+      tags:
+        - Queues
+      security:
+        - WorkerTokenAuth: []
+      parameters:
+        - $ref: '#/components/parameters/QueueName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AckJobRequest'
+            example:
+              lease_id: 550e8400-e29b-41d4-a716-446655440001
+      responses:
+        '204':
+          description: Job acknowledged.
+        '400':
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: invalid_request
+                message: Lease id is invalid.
+        '401':
+          description: Missing or invalid authentication.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: unauthorized
+                message: Authentication is required.
+        '403':
+          description: Worker is not authorized to acknowledge jobs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: forbidden
+                message: Worker is not authorized to acknowledge jobs.
+        '404':
+          description: Queue or lease does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: lease_not_found
+                message: The specified lease does not exist.
         '500':
           description: Internal server error.
           content:
@@ -446,6 +520,17 @@ components:
           description: Arbitrary JSON object containing the job payload.
           additionalProperties: true
 
+    AckJobRequest:
+      type: object
+      description: Request to acknowledge a reserved job.
+      required:
+        - lease_id
+      properties:
+        lease_id:
+          type: string
+          format: uuid
+          description: Identifier of the lease to acknowledge.
+
     ErrorResponse:
       type: object
       description: Error returned by the QER API.
@@ -465,6 +550,11 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    WorkerTokenAuth:
+      type: apiKey
+      in: header
+      name: X-Worker-Token
+      description: Signed worker JWT issued by /workers/consumer or /workers/producer.
 
 security:
   - BearerAuth: []

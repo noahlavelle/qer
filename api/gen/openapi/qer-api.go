@@ -51,6 +51,12 @@ func (e ReadyResponseStatus) Valid() bool {
 	}
 }
 
+// AckJobRequest Request to acknowledge a reserved job.
+type AckJobRequest struct {
+	// LeaseId Identifier of the lease to acknowledge.
+	LeaseId openapi_types.UUID `json:"lease_id"`
+}
+
 // CreateQueueRequest Request to create a new queue.
 type CreateQueueRequest struct {
 	// Name Name to assign to the new queue.
@@ -126,6 +132,9 @@ type QueueName = string
 // CreateQueueJSONRequestBody defines body for CreateQueue for application/json ContentType.
 type CreateQueueJSONRequestBody = CreateQueueRequest
 
+// AckJobJSONRequestBody defines body for AckJob for application/json ContentType.
+type AckJobJSONRequestBody = AckJobRequest
+
 // PutJobJSONRequestBody defines body for PutJob for application/json ContentType.
 type PutJobJSONRequestBody = PutJobRequest
 
@@ -137,6 +146,9 @@ type ServerInterface interface {
 	// CreateQueue Create a queue
 	// (POST /queues)
 	CreateQueue(w http.ResponseWriter, r *http.Request)
+	// AckJob Acknowledge a job
+	// (POST /queues/{queue_name}/ack)
+	AckJob(w http.ResponseWriter, r *http.Request, queueName QueueName)
 	// PutJob Put a job
 	// (POST /queues/{queue_name}/put)
 	PutJob(w http.ResponseWriter, r *http.Request, queueName QueueName)
@@ -167,6 +179,12 @@ func (_ Unimplemented) CheckHealth(w http.ResponseWriter, r *http.Request) {
 // CreateQueue Create a queue
 // (POST /queues)
 func (_ Unimplemented) CreateQueue(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AckJob Acknowledge a job
+// (POST /queues/{queue_name}/ack)
+func (_ Unimplemented) AckJob(w http.ResponseWriter, r *http.Request, queueName QueueName) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -228,6 +246,32 @@ func (siw *ServerInterfaceWrapper) CreateQueue(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateQueue(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AckJob operation middleware
+func (siw *ServerInterfaceWrapper) AckJob(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "queue_name" -------------
+	var queueName QueueName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "queue_name", chi.URLParam(r, "queue_name"), &queueName, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "queue_name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AckJob(w, r, queueName)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -465,6 +509,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/queues/{queue_name}/reserve", wrapper.ReserveJob)
 	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/queues/{queue_name}/ack", wrapper.AckJob)
+	})
 
 	return r
 }
@@ -571,6 +618,93 @@ func (response CreateQueue409JSONResponse) VisitCreateQueueResponse(w http.Respo
 type CreateQueue500JSONResponse ErrorResponse
 
 func (response CreateQueue500JSONResponse) VisitCreateQueueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AckJobRequestObject struct {
+	QueueName QueueName `json:"queue_name"`
+	Body      *AckJobJSONRequestBody
+}
+
+type AckJobResponseObject interface {
+	VisitAckJobResponse(w http.ResponseWriter) error
+}
+
+type AckJob204Response struct {
+}
+
+func (response AckJob204Response) VisitAckJobResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type AckJob400JSONResponse ErrorResponse
+
+func (response AckJob400JSONResponse) VisitAckJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AckJob401JSONResponse ErrorResponse
+
+func (response AckJob401JSONResponse) VisitAckJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AckJob403JSONResponse ErrorResponse
+
+func (response AckJob403JSONResponse) VisitAckJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AckJob404JSONResponse ErrorResponse
+
+func (response AckJob404JSONResponse) VisitAckJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AckJob500JSONResponse ErrorResponse
+
+func (response AckJob500JSONResponse) VisitAckJobResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -902,6 +1036,9 @@ type StrictServerInterface interface {
 	// CreateQueue Create a queue
 	// (POST /queues)
 	CreateQueue(ctx context.Context, request CreateQueueRequestObject) (CreateQueueResponseObject, error)
+	// AckJob Acknowledge a job
+	// (POST /queues/{queue_name}/ack)
+	AckJob(ctx context.Context, request AckJobRequestObject) (AckJobResponseObject, error)
 	// PutJob Put a job
 	// (POST /queues/{queue_name}/put)
 	PutJob(ctx context.Context, request PutJobRequestObject) (PutJobResponseObject, error)
@@ -1006,6 +1143,39 @@ func (sh *strictHandler) CreateQueue(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateQueueResponseObject); ok {
 		if err := validResponse.VisitCreateQueueResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AckJob operation middleware
+func (sh *strictHandler) AckJob(w http.ResponseWriter, r *http.Request, queueName QueueName) {
+	var request AckJobRequestObject
+
+	request.QueueName = queueName
+
+	var body AckJobJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AckJob(ctx, request.(AckJobRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AckJob")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AckJobResponseObject); ok {
+		if err := validResponse.VisitAckJobResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
