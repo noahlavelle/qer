@@ -10,6 +10,8 @@ tonic-prost = "0.14.6"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tonic-health = "0.14.6"
 thiserror = "2.0.20"
+jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
+serde = { version = "1.0", features = ["derive"] }
 
 [dependencies.uuid]
 version = "1.25.0"

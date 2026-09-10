@@ -18,22 +18,29 @@ pub enum EngineError {
     QueueAlreadyExists(String),
     #[error("invalid request: {0}")]
     InvalidRequest(String),
+    #[error("access denied")]
+    AccessDenied,
 }
 
-#[derive(Error, Debug)]
-pub enum QueueIDError {
-    #[error("queue ID cannot be empty")]
-    Empty,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[derive(Error, Debug)]
-pub enum ReservationIDError {
-    #[error("reservation ID cannot be empty")]
-    Empty,
-}
+    #[test]
+    fn queue_not_found_includes_the_name() {
+        let err = EngineError::QueueNotFound("orders".to_owned());
+        assert_eq!(err.to_string(), "queue not found: orders");
+    }
 
-#[derive(Error, Debug)]
-pub enum WorkerIDError {
-    #[error("worker ID cannot be empty")]
-    Empty,
+    #[test]
+    fn queue_already_exists_includes_the_name() {
+        let err = EngineError::QueueAlreadyExists("orders".to_owned());
+        assert_eq!(err.to_string(), "queue already exists: orders");
+    }
+
+    #[test]
+    fn access_denied_has_a_static_message() {
+        let err = EngineError::AccessDenied;
+        assert_eq!(err.to_string(), "access denied");
+    }
 }

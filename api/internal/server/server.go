@@ -100,7 +100,9 @@ func (s *Server) CreateQueue(
 			fmt.Errorf("create queue: %w", err)
 	}
 
-	return openapi.CreateQueue201JSONResponse{}, nil
+	return openapi.CreateQueue201JSONResponse{
+		Name: request.Body.Name,
+	}, nil
 }
 
 // PutJob implements [openapi.StrictServerInterface].

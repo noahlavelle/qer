@@ -4,6 +4,7 @@ ARG GO_VERSION=1.27
 
 FROM scratch AS skaffold-dependencies
 COPY api/cmd /api/cmd
+COPY api/internal /api/internal
 COPY api/gen /api/gen
 COPY api/go.mod api/go.sum /api/
 

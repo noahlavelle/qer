@@ -1,11 +1,11 @@
-use tonic::transport::Server;
+use tonic::{transport::Server};
 use tonic_health::server::health_reporter;
 
-use crate::{engine::Engine, grpc::service::QueueEngineService, proto::qer::v1::queue_engine_server::QueueEngineServer};
+use crate::{engine::Engine, grpc::{middleware, service::QueueEngineService}, proto::qer::v1::queue_engine_server::QueueEngineServer};
 
-mod proto;
-pub mod engine;
+mod engine;
 mod grpc;
+mod proto;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,7 +24,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Server::builder()
         .add_service(health_service)
-        .add_service(QueueEngineServer::new(service))
+        .add_service(QueueEngineServer::with_interceptor(
+            service,
+            middleware::auth_interceptor,
+        ))
         .serve(addr)
         .await?;
 
