@@ -23,6 +23,24 @@ pub enum AuthError {
     MissingClaim(String),
     #[error("missing authenticated worker")]
     NotAuthed,
+    #[error("insufficient scopes")]
+    NotScoped,
+}
+
+pub enum Scope {
+    CreateQueue,
+    Produce,
+    Consume,
+}
+
+impl Scope {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Scope::CreateQueue => "queue.create",
+            Scope::Produce => "queue.produce",
+            Scope::Consume => "queue.consume",
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -30,7 +48,7 @@ pub struct WorkerClaims {
     sub: String,
     scopes: Vec<String>,
     iss: String,
-    aud: String,
+    aud: Vec<String>,
     exp: usize,
     iat: usize,
     nbf: usize,
@@ -56,6 +74,14 @@ impl AuthenticatedWorker {
             worker_id,
             scopes: claims.scopes,
         })
+    }
+
+    pub fn check_scope(&self, scope: Scope) -> Result<(), AuthError> {
+        if self.scopes.contains(&scope.as_str().to_owned()) {
+            return Ok(());
+        }
+
+        Err(AuthError::NotScoped)
     }
 }
 
@@ -102,12 +128,18 @@ mod tests {
             .as_secs() as i64
     }
 
-    fn make_claims(sub: &str, scopes: Vec<&str>, iss: &str, aud: &str, exp_offset: i64) -> WorkerClaims {
+    fn make_claims(
+        sub: &str,
+        scopes: Vec<&str>,
+        iss: &str,
+        aud: &str,
+        exp_offset: i64,
+    ) -> WorkerClaims {
         WorkerClaims {
             sub: sub.to_owned(),
             scopes: scopes.into_iter().map(String::from).collect(),
             iss: iss.to_owned(),
-            aud: aud.to_owned(),
+            aud: vec![aud.to_owned()],
             exp: (now() + exp_offset) as usize,
             iat: now() as usize,
             nbf: now() as usize,
@@ -116,11 +148,22 @@ mod tests {
     }
 
     fn token_signed_with(claims: &WorkerClaims, secret: &[u8]) -> String {
-        encode(&Header::new(Algorithm::HS256), claims, &EncodingKey::from_secret(secret)).unwrap()
+        encode(
+            &Header::new(Algorithm::HS256),
+            claims,
+            &EncodingKey::from_secret(secret),
+        )
+        .unwrap()
     }
 
     fn valid_token() -> String {
-        let claims = make_claims("worker-1", vec!["reserve", "ack"], "qer-api", "qer-engine", 3600);
+        let claims = make_claims(
+            "worker-1",
+            vec!["reserve", "ack"],
+            "qer-api",
+            "qer-engine",
+            3600,
+        );
         token_signed_with(&claims, b"secret")
     }
 
@@ -141,7 +184,13 @@ mod tests {
 
     #[test]
     fn validate_jwt_rejects_wrong_issuer() {
-        let claims = make_claims("worker-1", vec!["reserve"], "someone-else", "qer-engine", 3600);
+        let claims = make_claims(
+            "worker-1",
+            vec!["reserve"],
+            "someone-else",
+            "qer-engine",
+            3600,
+        );
         let token = token_signed_with(&claims, b"secret");
 
         let err = expect_err(validate_jwt(&token));
@@ -221,5 +270,53 @@ mod tests {
         let worker = auth_from_request(&request).unwrap();
         assert_eq!(worker.worker_id.as_str(), "worker-1");
         assert_eq!(worker.scopes, vec!["reserve"]);
+    }
+
+    #[test]
+    fn scope_as_str_maps_each_variant() {
+        assert_eq!(Scope::CreateQueue.as_str(), "queue.create");
+        assert_eq!(Scope::Produce.as_str(), "queue.produce");
+        assert_eq!(Scope::Consume.as_str(), "queue.consume");
+    }
+
+    fn worker_with_scopes(scopes: Vec<&str>) -> AuthenticatedWorker {
+        AuthenticatedWorker {
+            worker_id: WorkerID::new("worker-1").unwrap(),
+            scopes: scopes.into_iter().map(String::from).collect(),
+        }
+    }
+
+    #[test]
+    fn check_scope_accepts_a_worker_with_the_scope() {
+        let worker = worker_with_scopes(vec!["queue.create"]);
+        assert!(worker.check_scope(Scope::CreateQueue).is_ok());
+    }
+
+    #[test]
+    fn check_scope_accepts_a_worker_with_extra_scopes() {
+        let worker = worker_with_scopes(vec!["queue.produce", "queue.consume"]);
+        assert!(worker.check_scope(Scope::Produce).is_ok());
+        assert!(worker.check_scope(Scope::Consume).is_ok());
+    }
+
+    #[test]
+    fn check_scope_rejects_a_worker_missing_the_scope() {
+        let worker = worker_with_scopes(vec!["queue.produce"]);
+        let err = expect_err(worker.check_scope(Scope::CreateQueue));
+        assert!(matches!(err, AuthError::NotScoped));
+    }
+
+    #[test]
+    fn check_scope_rejects_a_worker_with_no_scopes() {
+        let worker = worker_with_scopes(vec![]);
+        let err = expect_err(worker.check_scope(Scope::Consume));
+        assert!(matches!(err, AuthError::NotScoped));
+    }
+
+    #[test]
+    fn check_scope_does_not_match_on_a_substring() {
+        let worker = worker_with_scopes(vec!["queue.create.extra"]);
+        let err = expect_err(worker.check_scope(Scope::CreateQueue));
+        assert!(matches!(err, AuthError::NotScoped));
     }
 }

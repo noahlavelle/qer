@@ -28,8 +28,10 @@ impl QueueEngine for QueueEngineService {
         &self,
         request: Request<CreateQueueRequest>,
     ) -> Result<Response<CreateQueueResponse>, Status> {
-        let request = request.into_inner();
+        let authed_worker = auth::auth_from_request(&request)?;
+        authed_worker.check_scope(auth::Scope::CreateQueue)?;
 
+        let request = request.into_inner();
         let queue_id = QueueID::new(request.name)?;
 
         self.engine.create_queue(queue_id).await?;
@@ -38,8 +40,10 @@ impl QueueEngine for QueueEngineService {
     }
 
     async fn put(&self, request: Request<PutRequest>) -> Result<Response<PutResponse>, Status> {
-        let request = request.into_inner();
+        let authed_worker = auth::auth_from_request(&request)?;
+        authed_worker.check_scope(auth::Scope::Produce)?;
 
+        let request = request.into_inner();
         let queue_id = QueueID::new(request.queue_name)?;
 
         let job_id = self.engine.put(queue_id, request.payload).await?;
@@ -54,8 +58,9 @@ impl QueueEngine for QueueEngineService {
         request: Request<ReserveRequest>,
     ) -> Result<Response<ReserveResponse>, Status> {
         let authed_worker = auth::auth_from_request(&request)?;
-        let request = request.into_inner();
+        authed_worker.check_scope(auth::Scope::Consume)?;
 
+        let request = request.into_inner();
         let queue_id = QueueID::new(request.queue_name)?;
 
         let reservation = self
@@ -77,8 +82,9 @@ impl QueueEngine for QueueEngineService {
 
     async fn ack(&self, request: Request<AckRequest>) -> Result<Response<AckResponse>, Status> {
         let authed_worker = auth::auth_from_request(&request)?;
-        let request = request.into_inner();
+        authed_worker.check_scope(auth::Scope::Consume)?;
 
+        let request = request.into_inner();
         let reservation_id = ReservationID::new(request.reservation_id)?;
 
         self.engine
@@ -100,11 +106,11 @@ mod tests {
         QueueEngineService::new(Engine::new())
     }
 
-    fn authed_request<T>(message: T, worker: &str) -> Request<T> {
+    fn authed_request<T>(message: T, worker: &str, scopes: Vec<&str>) -> Request<T> {
         let mut request = Request::new(message);
         request.extensions_mut().insert(auth::AuthenticatedWorker {
             worker_id: WorkerID::new(worker).unwrap(),
-            scopes: vec!["reserve".to_owned()],
+            scopes: scopes.into_iter().map(String::from).collect(),
         });
         request
     }
@@ -122,20 +128,54 @@ mod tests {
     async fn create_queue_succeeds() {
         let svc = service();
         let response = svc
+            .create_queue(authed_request(
+                CreateQueueRequest {
+                    name: "orders".into(),
+                },
+                "worker-1",
+                vec!["queue.create"],
+            ))
+            .await;
+        assert!(response.is_ok());
+    }
+
+    #[tokio::test]
+    async fn create_queue_without_auth_is_unauthenticated() {
+        let svc = service();
+        let result = svc
             .create_queue(Request::new(CreateQueueRequest {
                 name: "orders".into(),
             }))
             .await;
-        assert!(response.is_ok());
+        assert_eq!(expect_err(result).code(), Code::Unauthenticated);
+    }
+
+    #[tokio::test]
+    async fn create_queue_rejects_insufficient_scope() {
+        let svc = service();
+        let result = svc
+            .create_queue(authed_request(
+                CreateQueueRequest {
+                    name: "orders".into(),
+                },
+                "worker-1",
+                vec!["queue.produce"],
+            ))
+            .await;
+        assert_eq!(expect_err(result).code(), Code::Unauthenticated);
     }
 
     #[tokio::test]
     async fn create_queue_rejects_empty_name() {
         let svc = service();
         let result = svc
-            .create_queue(Request::new(CreateQueueRequest {
-                name: String::new(),
-            }))
+            .create_queue(authed_request(
+                CreateQueueRequest {
+                    name: String::new(),
+                },
+                "worker-1",
+                vec!["queue.create"],
+            ))
             .await;
         assert_eq!(expect_err(result).code(), Code::InvalidArgument);
     }
@@ -143,16 +183,24 @@ mod tests {
     #[tokio::test]
     async fn create_queue_rejects_duplicates() {
         let svc = service();
-        svc.create_queue(Request::new(CreateQueueRequest {
-            name: "orders".into(),
-        }))
+        svc.create_queue(authed_request(
+            CreateQueueRequest {
+                name: "orders".into(),
+            },
+            "worker-1",
+            vec!["queue.create"],
+        ))
         .await
         .unwrap();
 
         let result = svc
-            .create_queue(Request::new(CreateQueueRequest {
-                name: "orders".into(),
-            }))
+            .create_queue(authed_request(
+                CreateQueueRequest {
+                    name: "orders".into(),
+                },
+                "worker-1",
+                vec!["queue.create"],
+            ))
             .await;
         assert_eq!(expect_err(result).code(), Code::AlreadyExists);
     }
@@ -160,17 +208,25 @@ mod tests {
     #[tokio::test]
     async fn put_succeeds_and_returns_a_job_id() {
         let svc = service();
-        svc.create_queue(Request::new(CreateQueueRequest {
-            name: "orders".into(),
-        }))
+        svc.create_queue(authed_request(
+            CreateQueueRequest {
+                name: "orders".into(),
+            },
+            "worker-1",
+            vec!["queue.create"],
+        ))
         .await
         .unwrap();
 
         let response = svc
-            .put(Request::new(PutRequest {
-                queue_name: "orders".into(),
-                payload: vec![1, 2, 3],
-            }))
+            .put(authed_request(
+                PutRequest {
+                    queue_name: "orders".into(),
+                    payload: vec![1, 2, 3],
+                },
+                "worker-1",
+                vec!["queue.produce"],
+            ))
             .await
             .unwrap()
             .into_inner();
@@ -179,7 +235,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn put_into_unknown_queue_is_not_found() {
+    async fn put_without_auth_is_unauthenticated() {
         let svc = service();
         let result = svc
             .put(Request::new(PutRequest {
@@ -187,15 +243,51 @@ mod tests {
                 payload: vec![],
             }))
             .await;
+        assert_eq!(expect_err(result).code(), Code::Unauthenticated);
+    }
+
+    #[tokio::test]
+    async fn put_rejects_insufficient_scope() {
+        let svc = service();
+        let result = svc
+            .put(authed_request(
+                PutRequest {
+                    queue_name: "missing".into(),
+                    payload: vec![],
+                },
+                "worker-1",
+                vec!["queue.consume"],
+            ))
+            .await;
+        assert_eq!(expect_err(result).code(), Code::Unauthenticated);
+    }
+
+    #[tokio::test]
+    async fn put_into_unknown_queue_is_not_found() {
+        let svc = service();
+        let result = svc
+            .put(authed_request(
+                PutRequest {
+                    queue_name: "missing".into(),
+                    payload: vec![],
+                },
+                "worker-1",
+                vec!["queue.produce"],
+            ))
+            .await;
         assert_eq!(expect_err(result).code(), Code::NotFound);
     }
 
     #[tokio::test]
     async fn reserve_without_auth_is_unauthenticated() {
         let svc = service();
-        svc.create_queue(Request::new(CreateQueueRequest {
-            name: "orders".into(),
-        }))
+        svc.create_queue(authed_request(
+            CreateQueueRequest {
+                name: "orders".into(),
+            },
+            "worker-1",
+            vec!["queue.create"],
+        ))
         .await
         .unwrap();
 
@@ -208,11 +300,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reserve_returns_none_when_queue_is_empty() {
+    async fn reserve_rejects_insufficient_scope() {
         let svc = service();
-        svc.create_queue(Request::new(CreateQueueRequest {
-            name: "orders".into(),
-        }))
+        svc.create_queue(authed_request(
+            CreateQueueRequest {
+                name: "orders".into(),
+            },
+            "worker-1",
+            vec!["queue.create"],
+        ))
         .await
         .unwrap();
 
@@ -221,6 +317,31 @@ mod tests {
                 queue_name: "orders".into(),
             },
             "worker-1",
+            vec!["queue.produce"],
+        );
+        let result = svc.reserve(request).await;
+        assert_eq!(expect_err(result).code(), Code::Unauthenticated);
+    }
+
+    #[tokio::test]
+    async fn reserve_returns_none_when_queue_is_empty() {
+        let svc = service();
+        svc.create_queue(authed_request(
+            CreateQueueRequest {
+                name: "orders".into(),
+            },
+            "worker-1",
+            vec!["queue.create"],
+        ))
+        .await
+        .unwrap();
+
+        let request = authed_request(
+            ReserveRequest {
+                queue_name: "orders".into(),
+            },
+            "worker-1",
+            vec!["queue.consume"],
         );
         let response = svc.reserve(request).await.unwrap().into_inner();
         assert!(response.reservation.is_none());
@@ -229,15 +350,23 @@ mod tests {
     #[tokio::test]
     async fn reserve_returns_a_job_when_present() {
         let svc = service();
-        svc.create_queue(Request::new(CreateQueueRequest {
-            name: "orders".into(),
-        }))
+        svc.create_queue(authed_request(
+            CreateQueueRequest {
+                name: "orders".into(),
+            },
+            "worker-1",
+            vec!["queue.create"],
+        ))
         .await
         .unwrap();
-        svc.put(Request::new(PutRequest {
-            queue_name: "orders".into(),
-            payload: b"hello".to_vec(),
-        }))
+        svc.put(authed_request(
+            PutRequest {
+                queue_name: "orders".into(),
+                payload: b"hello".to_vec(),
+            },
+            "worker-1",
+            vec!["queue.produce"],
+        ))
         .await
         .unwrap();
 
@@ -246,6 +375,7 @@ mod tests {
                 queue_name: "orders".into(),
             },
             "worker-1",
+            vec!["queue.consume"],
         );
         let response = svc.reserve(request).await.unwrap().into_inner();
 
@@ -262,6 +392,7 @@ mod tests {
                 queue_name: "missing".into(),
             },
             "worker-1",
+            vec!["queue.consume"],
         );
         let result = svc.reserve(request).await;
         assert_eq!(expect_err(result).code(), Code::NotFound);
@@ -279,17 +410,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ack_rejects_insufficient_scope() {
+        let svc = service();
+        let request = authed_request(
+            AckRequest {
+                reservation_id: "r1".into(),
+            },
+            "worker-1",
+            vec!["queue.produce"],
+        );
+        let result = svc.ack(request).await;
+        assert_eq!(expect_err(result).code(), Code::Unauthenticated);
+    }
+
+    #[tokio::test]
     async fn ack_succeeds_for_the_reserving_worker() {
         let svc = service();
-        svc.create_queue(Request::new(CreateQueueRequest {
-            name: "orders".into(),
-        }))
+        svc.create_queue(authed_request(
+            CreateQueueRequest {
+                name: "orders".into(),
+            },
+            "worker-1",
+            vec!["queue.create"],
+        ))
         .await
         .unwrap();
-        svc.put(Request::new(PutRequest {
-            queue_name: "orders".into(),
-            payload: vec![1],
-        }))
+        svc.put(authed_request(
+            PutRequest {
+                queue_name: "orders".into(),
+                payload: vec![1],
+            },
+            "worker-1",
+            vec!["queue.produce"],
+        ))
         .await
         .unwrap();
 
@@ -298,6 +451,7 @@ mod tests {
                 queue_name: "orders".into(),
             },
             "worker-1",
+            vec!["queue.consume"],
         );
         let reservation = svc
             .reserve(reserve_request)
@@ -312,6 +466,7 @@ mod tests {
                 reservation_id: reservation.reservation_id,
             },
             "worker-1",
+            vec!["queue.consume"],
         );
         let response = svc.ack(ack_request).await;
         assert!(response.is_ok());
@@ -320,15 +475,23 @@ mod tests {
     #[tokio::test]
     async fn ack_by_a_different_worker_is_rejected() {
         let svc = service();
-        svc.create_queue(Request::new(CreateQueueRequest {
-            name: "orders".into(),
-        }))
+        svc.create_queue(authed_request(
+            CreateQueueRequest {
+                name: "orders".into(),
+            },
+            "worker-1",
+            vec!["queue.create"],
+        ))
         .await
         .unwrap();
-        svc.put(Request::new(PutRequest {
-            queue_name: "orders".into(),
-            payload: vec![1],
-        }))
+        svc.put(authed_request(
+            PutRequest {
+                queue_name: "orders".into(),
+                payload: vec![1],
+            },
+            "worker-1",
+            vec!["queue.produce"],
+        ))
         .await
         .unwrap();
 
@@ -337,6 +500,7 @@ mod tests {
                 queue_name: "orders".into(),
             },
             "worker-1",
+            vec!["queue.consume"],
         );
         let reservation = svc
             .reserve(reserve_request)
@@ -351,6 +515,7 @@ mod tests {
                 reservation_id: reservation.reservation_id,
             },
             "worker-2",
+            vec!["queue.consume"],
         );
         let result = svc.ack(ack_request).await;
         assert_eq!(expect_err(result).code(), Code::PermissionDenied);
@@ -364,6 +529,7 @@ mod tests {
                 reservation_id: "missing".into(),
             },
             "worker-1",
+            vec!["queue.consume"],
         );
         let result = svc.ack(request).await;
         assert_eq!(expect_err(result).code(), Code::NotFound);

@@ -59,7 +59,7 @@ func (s *Server) AttachConsumer(
 ) (openapi.AttachConsumerResponseObject, error) {
 	token, err := s.auth.SignWithScopes(
 		uuid.NewV4().String(),
-		[]string{"queue.reserve", "queue.ack"},
+		[]string{"queue.consume"},
 	)
 	if err != nil {
 		return openapi.AttachConsumer500JSONResponse{},
@@ -78,7 +78,7 @@ func (s *Server) AttachProducer(
 ) (openapi.AttachProducerResponseObject, error) {
 	token, err := s.auth.SignWithScopes(
 		uuid.NewV4().String(),
-		[]string{"queue.put"},
+		[]string{"queue.create", "queue.produce"},
 	)
 	if err != nil {
 		return openapi.AttachProducer500JSONResponse{},

@@ -107,4 +107,10 @@ mod tests {
         let status: Status = AuthError::TokenExpired.into();
         assert_eq!(status.code(), Code::Unauthenticated);
     }
+
+    #[test]
+    fn not_scoped_maps_to_unauthenticated() {
+        let status: Status = AuthError::NotScoped.into();
+        assert_eq!(status.code(), Code::Unauthenticated);
+    }
 }
