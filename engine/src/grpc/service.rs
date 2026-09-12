@@ -100,10 +100,10 @@ mod tests {
     use tonic::Code;
 
     use super::*;
-    use crate::engine::WorkerID;
+    use crate::engine::{WorkerID, test_engine};
 
-    fn service() -> QueueEngineService {
-        QueueEngineService::new(Engine::new())
+    async fn service() -> QueueEngineService {
+        QueueEngineService::new(test_engine().await)
     }
 
     fn authed_request<T>(message: T, worker: &str, scopes: Vec<Scope>) -> Request<T> {
@@ -126,7 +126,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_queue_succeeds() {
-        let svc = service();
+        let svc = service().await;
         let response = svc
             .create_queue(authed_request(
                 CreateQueueRequest {
@@ -141,7 +141,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_queue_without_auth_is_unauthenticated() {
-        let svc = service();
+        let svc = service().await;
         let result = svc
             .create_queue(Request::new(CreateQueueRequest {
                 name: "orders".into(),
@@ -152,7 +152,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_queue_rejects_insufficient_scope() {
-        let svc = service();
+        let svc = service().await;
         let result = svc
             .create_queue(authed_request(
                 CreateQueueRequest {
@@ -167,7 +167,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_queue_rejects_empty_name() {
-        let svc = service();
+        let svc = service().await;
         let result = svc
             .create_queue(authed_request(
                 CreateQueueRequest {
@@ -182,7 +182,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_queue_rejects_duplicates() {
-        let svc = service();
+        let svc = service().await;
         svc.create_queue(authed_request(
             CreateQueueRequest {
                 name: "orders".into(),
@@ -207,7 +207,7 @@ mod tests {
 
     #[tokio::test]
     async fn put_succeeds_and_returns_a_job_id() {
-        let svc = service();
+        let svc = service().await;
         svc.create_queue(authed_request(
             CreateQueueRequest {
                 name: "orders".into(),
@@ -236,7 +236,7 @@ mod tests {
 
     #[tokio::test]
     async fn put_without_auth_is_unauthenticated() {
-        let svc = service();
+        let svc = service().await;
         let result = svc
             .put(Request::new(PutRequest {
                 queue_name: "missing".into(),
@@ -248,7 +248,7 @@ mod tests {
 
     #[tokio::test]
     async fn put_rejects_insufficient_scope() {
-        let svc = service();
+        let svc = service().await;
         let result = svc
             .put(authed_request(
                 PutRequest {
@@ -264,7 +264,7 @@ mod tests {
 
     #[tokio::test]
     async fn put_into_unknown_queue_is_not_found() {
-        let svc = service();
+        let svc = service().await;
         let result = svc
             .put(authed_request(
                 PutRequest {
@@ -280,7 +280,7 @@ mod tests {
 
     #[tokio::test]
     async fn reserve_without_auth_is_unauthenticated() {
-        let svc = service();
+        let svc = service().await;
         svc.create_queue(authed_request(
             CreateQueueRequest {
                 name: "orders".into(),
@@ -301,7 +301,7 @@ mod tests {
 
     #[tokio::test]
     async fn reserve_rejects_insufficient_scope() {
-        let svc = service();
+        let svc = service().await;
         svc.create_queue(authed_request(
             CreateQueueRequest {
                 name: "orders".into(),
@@ -325,7 +325,7 @@ mod tests {
 
     #[tokio::test]
     async fn reserve_returns_none_when_queue_is_empty() {
-        let svc = service();
+        let svc = service().await;
         svc.create_queue(authed_request(
             CreateQueueRequest {
                 name: "orders".into(),
@@ -349,7 +349,7 @@ mod tests {
 
     #[tokio::test]
     async fn reserve_returns_a_job_when_present() {
-        let svc = service();
+        let svc = service().await;
         svc.create_queue(authed_request(
             CreateQueueRequest {
                 name: "orders".into(),
@@ -386,7 +386,7 @@ mod tests {
 
     #[tokio::test]
     async fn reserve_from_unknown_queue_is_not_found() {
-        let svc = service();
+        let svc = service().await;
         let request = authed_request(
             ReserveRequest {
                 queue_name: "missing".into(),
@@ -400,7 +400,7 @@ mod tests {
 
     #[tokio::test]
     async fn ack_without_auth_is_unauthenticated() {
-        let svc = service();
+        let svc = service().await;
         let result = svc
             .ack(Request::new(AckRequest {
                 reservation_id: "r1".into(),
@@ -411,7 +411,7 @@ mod tests {
 
     #[tokio::test]
     async fn ack_rejects_insufficient_scope() {
-        let svc = service();
+        let svc = service().await;
         let request = authed_request(
             AckRequest {
                 reservation_id: "r1".into(),
@@ -425,7 +425,7 @@ mod tests {
 
     #[tokio::test]
     async fn ack_succeeds_for_the_reserving_worker() {
-        let svc = service();
+        let svc = service().await;
         svc.create_queue(authed_request(
             CreateQueueRequest {
                 name: "orders".into(),
@@ -474,7 +474,7 @@ mod tests {
 
     #[tokio::test]
     async fn ack_by_a_different_worker_is_rejected() {
-        let svc = service();
+        let svc = service().await;
         svc.create_queue(authed_request(
             CreateQueueRequest {
                 name: "orders".into(),
@@ -523,7 +523,7 @@ mod tests {
 
     #[tokio::test]
     async fn ack_unknown_reservation_is_not_found() {
-        let svc = service();
+        let svc = service().await;
         let request = authed_request(
             AckRequest {
                 reservation_id: "missing".into(),

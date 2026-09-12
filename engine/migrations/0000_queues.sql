@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS queues (
+    name TEXT PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

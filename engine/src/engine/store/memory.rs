@@ -6,7 +6,7 @@ use tonic::async_trait;
 use crate::engine::{
     JobID, QueueID, ReservationID, WorkerID,
     queue::Queue,
-    store::{MetadataStore, PayloadStore, StoreError},
+    store::{MetadataStore, StoreError},
 };
 
 struct StoredReservation {
@@ -17,7 +17,6 @@ struct StoredReservation {
 pub struct InMemoryStoreState {
     queues: HashMap<QueueID, Queue>,
     reservations: HashMap<ReservationID, StoredReservation>,
-    payloads: HashMap<JobID, Vec<u8>>,
 }
 
 pub struct InMemoryStore {
@@ -30,7 +29,6 @@ impl InMemoryStore {
             state: Mutex::new(InMemoryStoreState {
                 queues: HashMap::new(),
                 reservations: HashMap::new(),
-                payloads: HashMap::new(),
             }),
         }
     }
@@ -109,36 +107,5 @@ impl MetadataStore for InMemoryStore {
 
         let reservation = state.reservations.remove(reservation_id).unwrap();
         Ok(reservation.job_id)
-    }
-}
-
-#[async_trait]
-impl PayloadStore for InMemoryStore {
-    async fn put(&self, job_id: JobID, payload: Vec<u8>) -> Result<(), StoreError> {
-        let mut state = self.state.lock().await;
-
-        state.payloads.insert(job_id, payload);
-
-        Ok(())
-    }
-
-    async fn get(&self, job_id: &JobID) -> Result<Vec<u8>, StoreError> {
-        let state = self.state.lock().await;
-
-        let payload = state
-            .payloads
-            .get(job_id)
-            .cloned()
-            .ok_or_else(|| StoreError::JobNotFound(job_id.as_str().to_owned()))?;
-
-        Ok(payload)
-    }
-
-    async fn delete(&self, job_id: &JobID) -> Result<(), StoreError> {
-        let mut state = self.state.lock().await;
-
-        state.payloads.remove(job_id);
-
-        Ok(())
     }
 }

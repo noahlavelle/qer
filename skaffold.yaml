@@ -18,6 +18,8 @@ manifests:
   rawYaml:
     - manifests/dev/api.yaml
     - manifests/dev/engine.yaml
+    - manifests/dev/postgres-pvc.yaml
+    - manifests/dev/postgres.yaml
 
 deploy:
   kubectl: {}

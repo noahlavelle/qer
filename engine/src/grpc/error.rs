@@ -23,6 +23,7 @@ impl From<EngineError> for Status {
             EngineError::Store(StoreError::JobNotFound(id)) => {
                 Status::not_found(format!("job not found: {id}"))
             }
+            EngineError::Store(StoreError::Postgres(error)) => Status::internal(error.to_string()),
             _ => Status::internal("unknown"),
         }
     }

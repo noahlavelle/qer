@@ -20,6 +20,7 @@ RUN --mount=type=bind,source=engine/src,target=src \
     --mount=type=bind,source=engine/build.rs,target=build.rs \
     --mount=type=bind,source=engine/Cargo.toml,target=Cargo.toml \
     --mount=type=bind,source=engine/Cargo.lock,target=Cargo.lock \
+    --mount=type=bind,source=engine/migrations,target=migrations \
     --mount=type=bind,source=proto,target=proto \
     --mount=type=cache,target=/app/target \
     --mount=type=cache,target=/var/cache/cargo \

@@ -2,7 +2,7 @@ use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 
 use crate::{
-    engine::Engine,
+    engine::{Engine, connect},
     grpc::{middleware, service::QueueEngineService},
     proto::qer::v1::queue_engine_server::QueueEngineServer,
 };
@@ -12,6 +12,7 @@ mod grpc;
 mod proto;
 
 // TODO:
+//   - Add an in memory cache for the postgres layer, toggleable
 //   - Start to look at other resolved states
 //     - Retry returning to the queue
 //     - A manager to bury jobs over x retries etc
@@ -20,7 +21,8 @@ mod proto;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "0.0.0.0:50051".parse()?;
 
-    let engine = Engine::new();
+    let postgres_connection = connect("postgres://qer:dev@postgres:5432/qer").await?;
+    let engine = Engine::new(postgres_connection);
     let service = QueueEngineService::new(engine);
 
     let (health_reporter, health_service) = health_reporter();
