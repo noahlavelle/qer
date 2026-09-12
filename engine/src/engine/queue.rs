@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use thiserror::Error;
 
-use crate::engine::Job;
+use crate::engine::JobID;
 
 #[derive(Error, Debug)]
 pub enum QueueIDError {
@@ -36,7 +36,7 @@ impl From<QueueID> for String {
 }
 
 pub struct Queue {
-    ready: VecDeque<Job>,
+    ready: VecDeque<JobID>,
 }
 
 impl Queue {
@@ -46,11 +46,11 @@ impl Queue {
         }
     }
 
-    pub fn put(&mut self, job: Job) {
-        self.ready.push_back(job);
+    pub fn put(&mut self, job_id: JobID) {
+        self.ready.push_back(job_id);
     }
 
-    pub fn reserve(&mut self) -> Option<Job> {
+    pub fn reserve(&mut self) -> Option<JobID> {
         self.ready.pop_front()
     }
 }
@@ -58,15 +58,6 @@ impl Queue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::JobID;
-
-    fn make_job(queue_id: &QueueID, payload: &[u8]) -> Job {
-        Job {
-            id: JobID::generate(),
-            queue_id: queue_id.clone(),
-            payload: payload.to_vec(),
-        }
-    }
 
     #[test]
     fn queue_id_rejects_empty() {
@@ -92,23 +83,19 @@ mod tests {
 
     #[test]
     fn put_then_reserve_returns_the_job() {
-        let queue_id = QueueID::new("q").unwrap();
         let mut queue = Queue::new();
-        let job = make_job(&queue_id, b"payload");
-        let job_id = job.id.clone();
+        let job_id = JobID::generate();
 
-        queue.put(job);
+        queue.put(job_id.clone());
         let reserved = queue.reserve().expect("expected a job");
 
-        assert_eq!(reserved.id.as_str(), job_id.as_str());
-        assert_eq!(reserved.payload, b"payload");
+        assert_eq!(reserved.as_str(), job_id.as_str());
     }
 
     #[test]
     fn reserve_drains_queue_to_empty() {
-        let queue_id = QueueID::new("q").unwrap();
         let mut queue = Queue::new();
-        queue.put(make_job(&queue_id, b"a"));
+        queue.put(JobID::generate());
 
         assert!(queue.reserve().is_some());
         assert!(queue.reserve().is_none());
@@ -116,15 +103,18 @@ mod tests {
 
     #[test]
     fn multiple_jobs_are_reserved_in_fifo_order() {
-        let queue_id = QueueID::new("q").unwrap();
         let mut queue = Queue::new();
-        queue.put(make_job(&queue_id, b"first"));
-        queue.put(make_job(&queue_id, b"second"));
-        queue.put(make_job(&queue_id, b"third"));
+        let first = JobID::generate();
+        let second = JobID::generate();
+        let third = JobID::generate();
 
-        assert_eq!(queue.reserve().unwrap().payload, b"first");
-        assert_eq!(queue.reserve().unwrap().payload, b"second");
-        assert_eq!(queue.reserve().unwrap().payload, b"third");
+        queue.put(first.clone());
+        queue.put(second.clone());
+        queue.put(third.clone());
+
+        assert_eq!(queue.reserve().unwrap().as_str(), first.as_str());
+        assert_eq!(queue.reserve().unwrap().as_str(), second.as_str());
+        assert_eq!(queue.reserve().unwrap().as_str(), third.as_str());
         assert!(queue.reserve().is_none());
     }
 }

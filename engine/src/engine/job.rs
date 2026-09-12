@@ -1,7 +1,5 @@
 use uuid::Uuid;
 
-use crate::engine::QueueID;
-
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct JobID(String);
 
@@ -25,14 +23,6 @@ impl Default for JobID {
     fn default() -> Self {
         Self::generate()
     }
-}
-
-#[derive(Clone)]
-#[allow(dead_code)]
-pub struct Job {
-    pub id: JobID,
-    pub queue_id: QueueID,
-    pub payload: Vec<u8>,
 }
 
 #[cfg(test)]

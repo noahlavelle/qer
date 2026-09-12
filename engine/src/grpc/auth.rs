@@ -336,13 +336,13 @@ mod tests {
     fn check_scope_rejects_a_worker_missing_the_scope() {
         let worker = worker_with_scopes(vec![qer::v1::Scope::QueueProduce]);
         let err = expect_err(worker.check_scope(qer::v1::Scope::QueueCreate));
-        assert!(matches!(err, AuthError::NotScoped));
+        assert!(matches!(err, AuthError::NotAuthed));
     }
 
     #[test]
     fn check_scope_rejects_a_worker_with_no_scopes() {
         let worker = worker_with_scopes(vec![]);
         let err = expect_err(worker.check_scope(qer::v1::Scope::QueueConsume));
-        assert!(matches!(err, AuthError::NotScoped));
+        assert!(matches!(err, AuthError::NotAuthed));
     }
 }

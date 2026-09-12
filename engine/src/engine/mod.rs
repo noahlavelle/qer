@@ -1,98 +1,74 @@
-use std::collections::HashMap;
-use tokio::sync::Mutex;
+use std::sync::Arc;
+use thiserror::Error;
 
-mod error;
 mod job;
 mod queue;
 mod reservation;
+mod store;
 mod worker;
 
-pub use error::EngineError;
-pub use job::{Job, JobID};
+pub use job::JobID;
 pub use queue::{QueueID, QueueIDError};
 pub use reservation::{Reservation, ReservationID, ReservationIDError};
+pub use store::StoreError;
 pub use worker::{WorkerID, WorkerIDError};
 
-use queue::Queue;
+use crate::engine::store::{MetadataStore, PayloadStore, memory::InMemoryStore};
 
-struct EngineState {
-    queues: HashMap<QueueID, Queue>,
-    reservations: HashMap<ReservationID, Reservation>,
+#[derive(Error, Debug)]
+pub enum EngineError {
+    #[error(transparent)]
+    Store(#[from] StoreError),
 }
 
 pub struct Engine {
-    state: Mutex<EngineState>,
+    metadata: Arc<dyn MetadataStore>,
+    payload: Arc<dyn PayloadStore>,
 }
 
 impl Engine {
     pub fn new() -> Self {
         Self {
-            state: Mutex::new(EngineState {
-                queues: HashMap::new(),
-                reservations: HashMap::new(),
-            }),
+            metadata: Arc::new(InMemoryStore::new()),
+            payload: Arc::new(InMemoryStore::new()),
         }
     }
 
     pub async fn create_queue(&self, queue_id: QueueID) -> Result<(), EngineError> {
-        let mut state = self.state.lock().await;
-
-        if state.queues.contains_key(&queue_id) {
-            return Err(EngineError::QueueAlreadyExists(queue_id.into()));
-        }
-
-        state.queues.insert(queue_id, Queue::new());
-
+        self.metadata.create_queue(queue_id).await?;
         Ok(())
     }
 
     pub async fn put(&self, queue_id: QueueID, payload: Vec<u8>) -> Result<JobID, EngineError> {
-        let mut state = self.state.lock().await;
-
-        let queue = state
-            .queues
-            .get_mut(&queue_id)
-            .ok_or_else(|| EngineError::QueueNotFound(queue_id.as_str().to_owned()))?;
-
         let job_id = JobID::generate();
-        let job = Job {
-            id: job_id.clone(),
-            queue_id,
-            payload,
-        };
 
-        queue.put(job);
+        self.payload.put(job_id.clone(), payload).await?;
+        self.metadata.enqueue(&queue_id, job_id.clone()).await?;
 
         Ok(job_id)
     }
 
     pub async fn reserve(
         &self,
-        queue_id: QueueID,
+        queue_id: &QueueID,
         worker_id: WorkerID,
     ) -> Result<Option<Reservation>, EngineError> {
-        let mut state = self.state.lock().await;
+        let reservation_id = ReservationID::generate();
 
-        let queue = state
-            .queues
-            .get_mut(&queue_id)
-            .ok_or_else(|| EngineError::QueueNotFound(queue_id.into()))?;
-
-        let Some(job) = queue.reserve() else {
+        let Some(job_id) = self
+            .metadata
+            .reserve(queue_id, reservation_id.clone(), worker_id)
+            .await?
+        else {
             return Ok(None);
         };
+        let payload = self.payload.get(&job_id).await?;
 
-        let reservation = Reservation {
-            id: ReservationID::generate(),
-            worker_id,
-            job,
-        };
-
-        state
-            .reservations
-            .insert(reservation.id.clone(), reservation.clone());
-
-        Ok(Some(reservation))
+        Ok(Some(Reservation {
+            id: reservation_id,
+            job_id,
+            payload,
+        }))
     }
 
     pub async fn ack(
@@ -100,18 +76,8 @@ impl Engine {
         reservation_id: &ReservationID,
         worker_id: &WorkerID,
     ) -> Result<(), EngineError> {
-        let mut state = self.state.lock().await;
-
-        let reservation = state
-            .reservations
-            .get(reservation_id)
-            .ok_or_else(|| EngineError::ReservationNotFound(reservation_id.as_str().to_owned()))?;
-
-        if reservation.worker_id != *worker_id {
-            return Err(EngineError::AccessDenied);
-        }
-
-        state.reservations.remove(reservation_id);
+        let job_id = self.metadata.ack(reservation_id, worker_id).await?;
+        self.payload.delete(&job_id).await?;
 
         Ok(())
     }
@@ -156,7 +122,9 @@ mod tests {
         engine.create_queue(queue_id("q")).await.unwrap();
 
         let err = engine.create_queue(queue_id("q")).await.unwrap_err();
-        assert!(matches!(err, EngineError::QueueAlreadyExists(name) if name == "q"));
+        assert!(
+            matches!(err, EngineError::Store(StoreError::QueueAlreadyExists(name)) if name == "q")
+        );
     }
 
     #[tokio::test]
@@ -164,7 +132,9 @@ mod tests {
         let engine = Engine::new();
         let result = engine.put(queue_id("missing"), vec![1, 2, 3]).await;
         let err = expect_err(result);
-        assert!(matches!(err, EngineError::QueueNotFound(name) if name == "missing"));
+        assert!(
+            matches!(err, EngineError::Store(StoreError::QueueNotFound(name)) if name == "missing")
+        );
     }
 
     #[tokio::test]
@@ -181,9 +151,11 @@ mod tests {
     #[tokio::test]
     async fn reserve_from_unknown_queue_errors() {
         let engine = Engine::new();
-        let result = engine.reserve(queue_id("missing"), worker_id("w1")).await;
+        let result = engine.reserve(&queue_id("missing"), worker_id("w1")).await;
         let err = expect_err(result);
-        assert!(matches!(err, EngineError::QueueNotFound(name) if name == "missing"));
+        assert!(
+            matches!(err, EngineError::Store(StoreError::QueueNotFound(name)) if name == "missing")
+        );
     }
 
     #[tokio::test]
@@ -192,7 +164,7 @@ mod tests {
         engine.create_queue(queue_id("q")).await.unwrap();
 
         let reservation = engine
-            .reserve(queue_id("q"), worker_id("w1"))
+            .reserve(&queue_id("q"), worker_id("w1"))
             .await
             .unwrap();
         assert!(reservation.is_none());
@@ -208,14 +180,13 @@ mod tests {
             .unwrap();
 
         let reservation = engine
-            .reserve(queue_id("q"), worker_id("w1"))
+            .reserve(&queue_id("q"), worker_id("w1"))
             .await
             .unwrap()
             .expect("expected a reservation");
 
-        assert_eq!(reservation.job.id.as_str(), job_id.as_str());
-        assert_eq!(reservation.job.payload, b"payload");
-        assert!(reservation.worker_id == worker_id("w1"));
+        assert_eq!(reservation.job_id.as_str(), job_id.as_str());
+        assert_eq!(reservation.payload, b"payload");
     }
 
     #[tokio::test]
@@ -225,11 +196,11 @@ mod tests {
         engine.put(queue_id("q"), vec![1]).await.unwrap();
 
         let first = engine
-            .reserve(queue_id("q"), worker_id("w1"))
+            .reserve(&queue_id("q"), worker_id("w1"))
             .await
             .unwrap();
         let second = engine
-            .reserve(queue_id("q"), worker_id("w2"))
+            .reserve(&queue_id("q"), worker_id("w2"))
             .await
             .unwrap();
 
@@ -243,7 +214,7 @@ mod tests {
         engine.create_queue(queue_id("q")).await.unwrap();
         engine.put(queue_id("q"), vec![1]).await.unwrap();
         let reservation = engine
-            .reserve(queue_id("q"), worker_id("w1"))
+            .reserve(&queue_id("q"), worker_id("w1"))
             .await
             .unwrap()
             .unwrap();
@@ -258,7 +229,10 @@ mod tests {
             .ack(&ReservationID::generate(), &worker_id("w1"))
             .await
             .unwrap_err();
-        assert!(matches!(err, EngineError::ReservationNotFound(_)));
+        assert!(matches!(
+            err,
+            EngineError::Store(StoreError::ReservationNotFound(_))
+        ));
     }
 
     #[tokio::test]
@@ -267,7 +241,7 @@ mod tests {
         engine.create_queue(queue_id("q")).await.unwrap();
         engine.put(queue_id("q"), vec![1]).await.unwrap();
         let reservation = engine
-            .reserve(queue_id("q"), worker_id("w1"))
+            .reserve(&queue_id("q"), worker_id("w1"))
             .await
             .unwrap()
             .unwrap();
@@ -276,7 +250,7 @@ mod tests {
             .ack(&reservation.id, &worker_id("w2"))
             .await
             .unwrap_err();
-        assert!(matches!(err, EngineError::AccessDenied));
+        assert!(matches!(err, EngineError::Store(StoreError::AccessDenied)));
     }
 
     #[tokio::test]
@@ -285,7 +259,7 @@ mod tests {
         engine.create_queue(queue_id("q")).await.unwrap();
         engine.put(queue_id("q"), vec![1]).await.unwrap();
         let reservation = engine
-            .reserve(queue_id("q"), worker_id("w1"))
+            .reserve(&queue_id("q"), worker_id("w1"))
             .await
             .unwrap()
             .unwrap();
@@ -295,7 +269,10 @@ mod tests {
             .ack(&reservation.id, &worker_id("w1"))
             .await
             .unwrap_err();
-        assert!(matches!(err, EngineError::ReservationNotFound(_)));
+        assert!(matches!(
+            err,
+            EngineError::Store(StoreError::ReservationNotFound(_))
+        ));
     }
 
     #[tokio::test]
@@ -308,8 +285,8 @@ mod tests {
         let e2 = engine.clone();
 
         let (r1, r2) = tokio::join!(
-            async move { e1.reserve(queue_id("q"), worker_id("w1")).await.unwrap() },
-            async move { e2.reserve(queue_id("q"), worker_id("w2")).await.unwrap() },
+            async move { e1.reserve(&queue_id("q"), worker_id("w1")).await.unwrap() },
+            async move { e2.reserve(&queue_id("q"), worker_id("w2")).await.unwrap() },
         );
 
         let successes = [r1, r2].into_iter().filter(Option::is_some).count();

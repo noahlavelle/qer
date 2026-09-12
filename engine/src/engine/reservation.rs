@@ -1,7 +1,7 @@
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::engine::{Job, WorkerID};
+use crate::engine::JobID;
 
 #[derive(Error, Debug)]
 pub enum ReservationIDError {
@@ -41,8 +41,8 @@ impl From<ReservationID> for String {
 #[derive(Clone)]
 pub struct Reservation {
     pub id: ReservationID,
-    pub job: Job,
-    pub worker_id: WorkerID,
+    pub job_id: JobID,
+    pub payload: Vec<u8>,
 }
 
 #[cfg(test)]

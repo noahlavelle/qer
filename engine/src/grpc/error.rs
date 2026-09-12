@@ -1,25 +1,29 @@
 use tonic::Status;
 
-use crate::{engine::{EngineError, QueueIDError, ReservationIDError, WorkerIDError}, grpc::auth::AuthError};
+use crate::{
+    engine::{EngineError, QueueIDError, ReservationIDError, StoreError, WorkerIDError},
+    grpc::auth::AuthError,
+};
 
 impl From<EngineError> for Status {
     fn from(error: EngineError) -> Self {
         match error {
-            EngineError::QueueNotFound(name) => {
+            EngineError::Store(StoreError::QueueNotFound(name)) => {
                 Status::not_found(format!("queue not found: {name}"))
             }
-            EngineError::QueueAlreadyExists(name) => {
+            EngineError::Store(StoreError::QueueAlreadyExists(name)) => {
                 Status::already_exists(format!("queue already exists: {name}"))
             }
-            EngineError::ReservationNotFound(name) => {
+            EngineError::Store(StoreError::ReservationNotFound(name)) => {
                 Status::not_found(format!("reservation not found: {name}"))
             }
-            EngineError::AccessDenied => {
+            EngineError::Store(StoreError::AccessDenied) => {
                 Status::permission_denied("access denied")
             }
-            _ => {
-                Status::internal("unknown")
+            EngineError::Store(StoreError::JobNotFound(id)) => {
+                Status::not_found(format!("job not found: {id}"))
             }
+            _ => Status::internal("unknown"),
         }
     }
 }
@@ -56,31 +60,33 @@ mod tests {
 
     #[test]
     fn queue_not_found_maps_to_not_found() {
-        let status: Status = EngineError::QueueNotFound("q".to_owned()).into();
+        let status: Status = EngineError::Store(StoreError::QueueNotFound("q".to_owned())).into();
         assert_eq!(status.code(), Code::NotFound);
     }
 
     #[test]
     fn queue_already_exists_maps_to_already_exists() {
-        let status: Status = EngineError::QueueAlreadyExists("q".to_owned()).into();
+        let status: Status =
+            EngineError::Store(StoreError::QueueAlreadyExists("q".to_owned())).into();
         assert_eq!(status.code(), Code::AlreadyExists);
     }
 
     #[test]
     fn reservation_not_found_maps_to_not_found() {
-        let status: Status = EngineError::ReservationNotFound("r".to_owned()).into();
+        let status: Status =
+            EngineError::Store(StoreError::ReservationNotFound("r".to_owned())).into();
         assert_eq!(status.code(), Code::NotFound);
     }
 
     #[test]
     fn access_denied_maps_to_permission_denied() {
-        let status: Status = EngineError::AccessDenied.into();
+        let status: Status = EngineError::Store(StoreError::AccessDenied).into();
         assert_eq!(status.code(), Code::PermissionDenied);
     }
 
     #[test]
     fn unmapped_engine_errors_fall_back_to_internal() {
-        let status: Status = EngineError::QueueEmpty.into();
+        let status: Status = EngineError::Store(StoreError::QueueEmpty).into();
         assert_eq!(status.code(), Code::Internal);
     }
 
@@ -110,7 +116,7 @@ mod tests {
 
     #[test]
     fn not_scoped_maps_to_unauthenticated() {
-        let status: Status = AuthError::NotScoped.into();
+        let status: Status = AuthError::NotAuthed.into();
         assert_eq!(status.code(), Code::Unauthenticated);
     }
 }

@@ -65,15 +65,15 @@ impl QueueEngine for QueueEngineService {
 
         let reservation = self
             .engine
-            .reserve(queue_id, authed_worker.worker_id)
+            .reserve(&queue_id, authed_worker.worker_id)
             .await?;
 
         match reservation {
             Some(reservation) => Ok(Response::new(ReserveResponse {
                 reservation: Some(qer::v1::Reservation {
                     reservation_id: reservation.id.into(),
-                    job_id: reservation.job.id.into(),
-                    payload: reservation.job.payload,
+                    job_id: reservation.job_id.into(),
+                    payload: reservation.payload,
                 }),
             })),
             None => Ok(Response::new(ReserveResponse { reservation: None })),
