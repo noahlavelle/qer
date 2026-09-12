@@ -1,11 +1,20 @@
-use tonic::{transport::Server};
+use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 
-use crate::{engine::Engine, grpc::{middleware, service::QueueEngineService}, proto::qer::v1::queue_engine_server::QueueEngineServer};
+use crate::{
+    engine::Engine,
+    grpc::{middleware, service::QueueEngineService},
+    proto::qer::v1::queue_engine_server::QueueEngineServer,
+};
 
 mod engine;
 mod grpc;
 mod proto;
+
+// TODO:
+//   - Start to look at other resolved states
+//     - Retry returning to the queue
+//     - A manager to bury jobs over x retries etc
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

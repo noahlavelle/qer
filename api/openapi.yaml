@@ -160,6 +160,9 @@ paths:
       responses:
         '201':
           description: Queue created.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -168,6 +171,9 @@ paths:
                 name: emails
         '400':
           description: Invalid request.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -186,6 +192,9 @@ paths:
                 message: Authentication is required.
         '409':
           description: Queue already exists.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -195,6 +204,9 @@ paths:
                 message: The queue already exists.
         '500':
           description: Internal server error.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -227,6 +239,9 @@ paths:
       responses:
         '202':
           description: Job accepted.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -235,6 +250,9 @@ paths:
                 job_id: 550e8400-e29b-41d4-a716-446655440000
         '400':
           description: Invalid request.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -253,6 +271,9 @@ paths:
                 message: Authentication is required.
         '403':
           description: Worker is not authorized to put jobs.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -262,6 +283,9 @@ paths:
                 message: Worker is not authorized to put jobs.
         '404':
           description: Queue does not exist.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -271,6 +295,9 @@ paths:
                 message: The specified queue does not exist.
         '500':
           description: Internal server error.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -293,6 +320,9 @@ paths:
       responses:
         '200':
           description: Job reserved.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -305,6 +335,9 @@ paths:
                   priority: 1
         '204':
           description: No jobs are currently available.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
         '401':
           description: Missing or invalid authentication.
           content:
@@ -316,6 +349,9 @@ paths:
                 message: Authentication is required.
         '403':
           description: Worker is not authorized to reserve jobs.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -325,6 +361,9 @@ paths:
                 message: Worker is not authorized to reserve jobs.
         '404':
           description: Queue does not exist.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -334,6 +373,9 @@ paths:
                 message: The specified queue does not exist.
         '500':
           description: Internal server error.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -364,8 +406,14 @@ paths:
       responses:
         '204':
           description: Job acknowledged.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
         '400':
           description: Invalid request.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -384,6 +432,9 @@ paths:
                 message: Authentication is required.
         '403':
           description: Worker is not authorized to acknowledge jobs.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -393,6 +444,9 @@ paths:
                 message: Worker is not authorized to acknowledge jobs.
         '404':
           description: Queue or lease does not exist.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -402,6 +456,9 @@ paths:
                 message: The specified lease does not exist.
         '500':
           description: Internal server error.
+          headers:
+            X-Refresh-Worker-Token:
+              $ref: '#/components/headers/RefreshWorkerToken'
           content:
             application/json:
               schema:
@@ -417,6 +474,16 @@ components:
       in: path
       required: true
       description: Name of the queue to operate on.
+      schema:
+        type: string
+
+  headers:
+    RefreshWorkerToken:
+      description: >-
+        Newly signed worker JWT, present only when the token supplied in
+        X-Worker-Token had expired but was otherwise valid. Workers should
+        use this value in place of their previous token on subsequent
+        requests.
       schema:
         type: string
 

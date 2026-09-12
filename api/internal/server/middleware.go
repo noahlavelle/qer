@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/noahlavelle/qer/gen/openapi"
 	"google.golang.org/grpc"
@@ -15,7 +16,7 @@ import (
 
 type workerTokenKey struct{}
 
-func WorkerTokenMiddleware(
+func (s *Server) WorkerTokenMiddleware(
 	next openapi.StrictHandlerFunc,
 	operationID string,
 ) openapi.StrictHandlerFunc {
@@ -25,22 +26,40 @@ func WorkerTokenMiddleware(
 		r *http.Request,
 		request any,
 	) (any, error) {
-		switch operationID {
-		case "CreateQueue", "PutJob", "ReserveJob", "AckJob":
+			if !IsEndpointWorkerAuthed(operationID) {
+				return next(ctx, w, r, request)
+			}
+
 			token := r.Header.Get("X-Worker-Token")
 			if token == "" {
 				return nil, fmt.Errorf("missing worker authorization")
+			}
+
+			claims, err := s.auth.Parse(token)
+			if err != nil {
+				return nil, fmt.Errorf("parse worker token: %w", err)
+			}
+
+			now := time.Now()
+			if claims.ExpiresAt.Time.Before(now) {
+				claims.ExpiresAt = s.auth.GetExpiry(now)
+				// We reuse the rest of the claims, the engine can validate that
+				token, err = s.auth.SignClaims(claims)
+				if err != nil {
+					return nil, fmt.Errorf("resign token token: %w", err)
+				}
+
+				w.Header().Set("X-Refresh-Worker-Token", token)
 			}
 
 			ctx = context.WithValue(
 				ctx,
 				workerTokenKey{},
 				token,
-			)
-		}
+				)
 
-		return next(ctx, w, r, request)
-	}
+			return next(ctx, w, r, request)
+		}
 }
 
 func WorkerTokenInterceptor(
@@ -58,14 +77,14 @@ func WorkerTokenInterceptor(
 			return status.Error(
 				codes.Unauthenticated,
 				"missing worker token",
-			)
+				)
 		}
 
 		ctx = metadata.AppendToOutgoingContext(
 			ctx,
 			"x-worker-token",
 			token,
-		)
+			)
 	}
 
 	return invoker(ctx, method, req, reply, conn, opts...)

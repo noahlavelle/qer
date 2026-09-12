@@ -18,6 +18,18 @@ type Server struct {
 
 var _ openapi.StrictServerInterface = (*Server)(nil)
 
+func IsEndpointWorkerAuthed(operationID string) bool {
+	switch operationID {
+	case "CreateQueue",
+		"PutJob",
+		"ReserveJob",
+		"AckJob":
+		return true
+	default:
+		return false
+	}
+}
+
 func NewServer(engine *EngineClient, auth *auth.Authenticator) *Server {
 	return &Server{
 		engine,
@@ -101,7 +113,9 @@ func (s *Server) CreateQueue(
 	}
 
 	return openapi.CreateQueue201JSONResponse{
-		Name: request.Body.Name,
+		Body: openapi.QueueResponse{
+			Name: request.Body.Name,
+		},
 	}, nil
 }
 
@@ -129,7 +143,9 @@ func (s *Server) PutJob(
 	}
 
 	return openapi.PutJob202JSONResponse{
-		JobId: openapi_types.UUID(jobId),
+		Body: openapi.PutJobResponse{
+			JobId: openapi_types.UUID(jobId),
+		},
 	}, nil
 }
 
@@ -168,9 +184,11 @@ func (s *Server) ReserveJob(
 	}
 
 	return openapi.ReserveJob200JSONResponse{
-		JobId:   openapi_types.UUID(jobId),
-		LeaseId: openapi_types.UUID(leaseId),
-		Payload: payload,
+		Body: openapi.ReserveJobResponse{
+			JobId:   openapi_types.UUID(jobId),
+			LeaseId: openapi_types.UUID(leaseId),
+			Payload: payload,
+		},
 	}, nil
 }
 

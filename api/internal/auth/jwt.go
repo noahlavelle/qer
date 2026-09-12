@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 	"time"
 	"uuid"
@@ -43,7 +44,7 @@ func (a *Authenticator) SignWithScopes(
 	claims := Claims{
 		Subject:   subject,
 		Scopes:    scopes,
-		ExpiresAt: jwt.NewNumericDate(now.Add(a.ttl)),
+		ExpiresAt: a.GetExpiry(now),
 		IssuedAt:  jwt.NewNumericDate(now),
 		NotBefore: jwt.NewNumericDate(now),
 		ID:        uuid.New().String(),
@@ -51,6 +52,10 @@ func (a *Authenticator) SignWithScopes(
 		Audience:  []string{a.audience},
 	}
 
+	return a.SignClaims(claims)
+}
+
+func (a *Authenticator) SignClaims(claims Claims) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	signed, err := token.SignedString(a.secret)
@@ -59,4 +64,23 @@ func (a *Authenticator) SignWithScopes(
 	}
 
 	return signed, nil
+}
+
+func (a *Authenticator) GetExpiry(now time.Time) *jwt.NumericDate {
+	return jwt.NewNumericDate(now.Add(a.ttl))
+}
+
+func (a *Authenticator) Parse(token string) (Claims, error) {
+	claims := Claims{}
+
+	_, err := jwt.ParseWithClaims(token, &claims, func(_ *jwt.Token) (any, error) {
+		return a.secret, nil
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+	if err != nil && !errors.Is(err, jwt.ErrTokenExpired) {
+		// Expired tokens still have verified signatures and claims, so we can
+		// ignore here and re-issue at the caller
+		return Claims{}, fmt.Errorf("parse token: %w", err)
+	}
+
+	return claims, nil
 }

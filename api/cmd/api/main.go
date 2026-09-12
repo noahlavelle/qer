@@ -40,7 +40,7 @@ func main() {
 
 	srv := server.NewServer(engineClient, authenticator)
 	handler := openapi.NewStrictHandler(srv, []openapi.StrictMiddlewareFunc{
-		server.WorkerTokenMiddleware,
+		srv.WorkerTokenMiddleware,
 	})
 
 	r := chi.NewRouter()

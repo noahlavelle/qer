@@ -559,29 +559,49 @@ type CreateQueueResponseObject interface {
 	VisitCreateQueueResponse(w http.ResponseWriter) error
 }
 
-type CreateQueue201JSONResponse QueueResponse
+type CreateQueue201ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type CreateQueue201JSONResponse struct {
+	Body    QueueResponse
+	Headers CreateQueue201ResponseHeaders
+}
 
 func (response CreateQueue201JSONResponse) VisitCreateQueueResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(201)
 	_, err := buf.WriteTo(w)
 	return err
 }
 
-type CreateQueue400JSONResponse ErrorResponse
+type CreateQueue400ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type CreateQueue400JSONResponse struct {
+	Body    ErrorResponse
+	Headers CreateQueue400ResponseHeaders
+}
 
 func (response CreateQueue400JSONResponse) VisitCreateQueueResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
@@ -601,29 +621,49 @@ func (response CreateQueue401JSONResponse) VisitCreateQueueResponse(w http.Respo
 	return err
 }
 
-type CreateQueue409JSONResponse ErrorResponse
+type CreateQueue409ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type CreateQueue409JSONResponse struct {
+	Body    ErrorResponse
+	Headers CreateQueue409ResponseHeaders
+}
 
 func (response CreateQueue409JSONResponse) VisitCreateQueueResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
 
-type CreateQueue500JSONResponse ErrorResponse
+type CreateQueue500ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type CreateQueue500JSONResponse struct {
+	Body    ErrorResponse
+	Headers CreateQueue500ResponseHeaders
+}
 
 func (response CreateQueue500JSONResponse) VisitCreateQueueResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(500)
 	_, err := buf.WriteTo(w)
 	return err
@@ -638,23 +678,41 @@ type AckJobResponseObject interface {
 	VisitAckJobResponse(w http.ResponseWriter) error
 }
 
+type AckJob204ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
 type AckJob204Response struct {
+	Headers AckJob204ResponseHeaders
 }
 
 func (response AckJob204Response) VisitAckJobResponse(w http.ResponseWriter) error {
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(204)
 	return nil
 }
 
-type AckJob400JSONResponse ErrorResponse
+type AckJob400ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type AckJob400JSONResponse struct {
+	Body    ErrorResponse
+	Headers AckJob400ResponseHeaders
+}
 
 func (response AckJob400JSONResponse) VisitAckJobResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
@@ -674,43 +732,73 @@ func (response AckJob401JSONResponse) VisitAckJobResponse(w http.ResponseWriter)
 	return err
 }
 
-type AckJob403JSONResponse ErrorResponse
+type AckJob403ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type AckJob403JSONResponse struct {
+	Body    ErrorResponse
+	Headers AckJob403ResponseHeaders
+}
 
 func (response AckJob403JSONResponse) VisitAckJobResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
 
-type AckJob404JSONResponse ErrorResponse
+type AckJob404ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type AckJob404JSONResponse struct {
+	Body    ErrorResponse
+	Headers AckJob404ResponseHeaders
+}
 
 func (response AckJob404JSONResponse) VisitAckJobResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
 
-type AckJob500JSONResponse ErrorResponse
+type AckJob500ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type AckJob500JSONResponse struct {
+	Body    ErrorResponse
+	Headers AckJob500ResponseHeaders
+}
 
 func (response AckJob500JSONResponse) VisitAckJobResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(500)
 	_, err := buf.WriteTo(w)
 	return err
@@ -725,29 +813,49 @@ type PutJobResponseObject interface {
 	VisitPutJobResponse(w http.ResponseWriter) error
 }
 
-type PutJob202JSONResponse PutJobResponse
+type PutJob202ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type PutJob202JSONResponse struct {
+	Body    PutJobResponse
+	Headers PutJob202ResponseHeaders
+}
 
 func (response PutJob202JSONResponse) VisitPutJobResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(202)
 	_, err := buf.WriteTo(w)
 	return err
 }
 
-type PutJob400JSONResponse ErrorResponse
+type PutJob400ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type PutJob400JSONResponse struct {
+	Body    ErrorResponse
+	Headers PutJob400ResponseHeaders
+}
 
 func (response PutJob400JSONResponse) VisitPutJobResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
@@ -767,43 +875,73 @@ func (response PutJob401JSONResponse) VisitPutJobResponse(w http.ResponseWriter)
 	return err
 }
 
-type PutJob403JSONResponse ErrorResponse
+type PutJob403ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type PutJob403JSONResponse struct {
+	Body    ErrorResponse
+	Headers PutJob403ResponseHeaders
+}
 
 func (response PutJob403JSONResponse) VisitPutJobResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
 
-type PutJob404JSONResponse ErrorResponse
+type PutJob404ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type PutJob404JSONResponse struct {
+	Body    ErrorResponse
+	Headers PutJob404ResponseHeaders
+}
 
 func (response PutJob404JSONResponse) VisitPutJobResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
 
-type PutJob500JSONResponse ErrorResponse
+type PutJob500ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type PutJob500JSONResponse struct {
+	Body    ErrorResponse
+	Headers PutJob500ResponseHeaders
+}
 
 func (response PutJob500JSONResponse) VisitPutJobResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(500)
 	_, err := buf.WriteTo(w)
 	return err
@@ -817,24 +955,42 @@ type ReserveJobResponseObject interface {
 	VisitReserveJobResponse(w http.ResponseWriter) error
 }
 
-type ReserveJob200JSONResponse ReserveJobResponse
+type ReserveJob200ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type ReserveJob200JSONResponse struct {
+	Body    ReserveJobResponse
+	Headers ReserveJob200ResponseHeaders
+}
 
 func (response ReserveJob200JSONResponse) VisitReserveJobResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
 }
 
+type ReserveJob204ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
 type ReserveJob204Response struct {
+	Headers ReserveJob204ResponseHeaders
 }
 
 func (response ReserveJob204Response) VisitReserveJobResponse(w http.ResponseWriter) error {
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(204)
 	return nil
 }
@@ -853,43 +1009,73 @@ func (response ReserveJob401JSONResponse) VisitReserveJobResponse(w http.Respons
 	return err
 }
 
-type ReserveJob403JSONResponse ErrorResponse
+type ReserveJob403ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type ReserveJob403JSONResponse struct {
+	Body    ErrorResponse
+	Headers ReserveJob403ResponseHeaders
+}
 
 func (response ReserveJob403JSONResponse) VisitReserveJobResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
 
-type ReserveJob404JSONResponse ErrorResponse
+type ReserveJob404ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type ReserveJob404JSONResponse struct {
+	Body    ErrorResponse
+	Headers ReserveJob404ResponseHeaders
+}
 
 func (response ReserveJob404JSONResponse) VisitReserveJobResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
 
-type ReserveJob500JSONResponse ErrorResponse
+type ReserveJob500ResponseHeaders struct {
+	XRefreshWorkerToken *string
+}
+
+type ReserveJob500JSONResponse struct {
+	Body    ErrorResponse
+	Headers ReserveJob500ResponseHeaders
+}
 
 func (response ReserveJob500JSONResponse) VisitReserveJobResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.XRefreshWorkerToken != nil {
+		w.Header().Set("X-Refresh-Worker-Token", fmt.Sprint(*response.Headers.XRefreshWorkerToken))
+	}
 	w.WriteHeader(500)
 	_, err := buf.WriteTo(w)
 	return err
