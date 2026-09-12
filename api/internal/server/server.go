@@ -143,7 +143,7 @@ func (s *Server) PutJob(
 	}
 
 	return openapi.PutJob202JSONResponse{
-		Body: openapi.PutJobResponse{
+		Body: openapi.PutJobResult{
 			JobId: openapi_types.UUID(jobId),
 		},
 	}, nil
@@ -184,7 +184,7 @@ func (s *Server) ReserveJob(
 	}
 
 	return openapi.ReserveJob200JSONResponse{
-		Body: openapi.ReserveJobResponse{
+		Body: openapi.ReserveJobResult{
 			JobId:   openapi_types.UUID(jobId),
 			LeaseId: openapi_types.UUID(leaseId),
 			Payload: payload,

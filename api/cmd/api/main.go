@@ -44,7 +44,10 @@ func main() {
 	})
 
 	r := chi.NewRouter()
-	h := openapi.HandlerFromMux(handler, r)
+	h := openapi.HandlerWithOptions(handler, openapi.ChiServerOptions{
+		BaseRouter: r,
+		BaseURL:    "/api/v1",
+	})
 	s := &http.Server{
 		Handler: h,
 		Addr:    "0.0.0.0:8080",

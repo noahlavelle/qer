@@ -245,7 +245,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PutJobResponse'
+                $ref: '#/components/schemas/PutJobResult'
               example:
                 job_id: 550e8400-e29b-41d4-a716-446655440000
         '400':
@@ -326,7 +326,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ReserveJobResponse'
+                $ref: '#/components/schemas/ReserveJobResult'
               example:
                 job_id: 550e8400-e29b-41d4-a716-446655440000
                 lease_id: 550e8400-e29b-41d4-a716-446655440001
@@ -555,7 +555,7 @@ components:
           description: Arbitrary JSON object containing the job payload.
           additionalProperties: true
 
-    PutJobResponse:
+    PutJobResult:
       type: object
       description: Response returned after a job has been accepted by a queue.
       required:
@@ -566,7 +566,7 @@ components:
           format: uuid
           description: Unique identifier assigned to the queued job.
 
-    ReserveJobResponse:
+    ReserveJobResult:
       type: object
       description: Response containing a reserved job and its lease identifier.
       required:

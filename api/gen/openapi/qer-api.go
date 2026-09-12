@@ -8,7 +8,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime"
@@ -87,8 +90,8 @@ type PutJobRequest struct {
 	Payload map[string]interface{} `json:"payload"`
 }
 
-// PutJobResponse Response returned after a job has been accepted by a queue.
-type PutJobResponse struct {
+// PutJobResult Response returned after a job has been accepted by a queue.
+type PutJobResult struct {
 	// JobId Unique identifier assigned to the queued job.
 	JobId openapi_types.UUID `json:"job_id"`
 }
@@ -108,8 +111,8 @@ type ReadyResponse struct {
 // ReadyResponseStatus Current readiness status of the service.
 type ReadyResponseStatus string
 
-// ReserveJobResponse Response containing a reserved job and its lease identifier.
-type ReserveJobResponse struct {
+// ReserveJobResult Response containing a reserved job and its lease identifier.
+type ReserveJobResult struct {
 	// JobId Unique identifier of the reserved job.
 	JobId openapi_types.UUID `json:"job_id"`
 
@@ -137,6 +140,2153 @@ type AckJobJSONRequestBody = AckJobRequest
 
 // PutJobJSONRequestBody defines body for PutJob for application/json ContentType.
 type PutJobJSONRequestBody = PutJobRequest
+
+// RequestEditorFn is the function signature for the RequestEditor callback function
+type RequestEditorFn func(ctx context.Context, req *http.Request) error
+
+// Doer performs HTTP requests.
+//
+// The standard http.Client implements this interface.
+type HttpRequestDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+// Client which conforms to the OpenAPI3 specification for this service.
+type Client struct {
+	// The endpoint of the server conforming to this interface, with scheme,
+	// https://api.deepmap.com for example. This can contain a path relative
+	// to the server, such as https://api.deepmap.com/dev-test, and all the
+	// paths in the swagger spec will be appended to the server.
+	Server string
+
+	// Doer for performing requests, typically a *http.Client with any
+	// customized settings, such as certificate chains.
+	Client HttpRequestDoer
+
+	// A list of callbacks for modifying requests which are generated before sending over
+	// the network.
+	RequestEditors []RequestEditorFn
+}
+
+// ClientOption allows setting custom parameters during construction
+type ClientOption func(*Client) error
+
+// Creates a new Client, with reasonable defaults
+func NewClient(server string, opts ...ClientOption) (*Client, error) {
+	// create a client with sane default values
+	client := Client{
+		Server: server,
+	}
+	// mutate client and add all optional params
+	for _, o := range opts {
+		if err := o(&client); err != nil {
+			return nil, err
+		}
+	}
+	// ensure the server URL always has a trailing slash
+	if !strings.HasSuffix(client.Server, "/") {
+		client.Server += "/"
+	}
+	// create httpClient, if not already present
+	if client.Client == nil {
+		client.Client = &http.Client{}
+	}
+	return &client, nil
+}
+
+// WithHTTPClient allows overriding the default Doer, which is
+// automatically created using http.Client. This is useful for tests.
+func WithHTTPClient(doer HttpRequestDoer) ClientOption {
+	return func(c *Client) error {
+		c.Client = doer
+		return nil
+	}
+}
+
+// WithRequestEditorFn allows setting up a callback function, which will be
+// called right before sending the request. This can be used to mutate the request.
+func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
+	return func(c *Client) error {
+		c.RequestEditors = append(c.RequestEditors, fn)
+		return nil
+	}
+}
+
+// The interface specification for the client above.
+type ClientInterface interface {
+
+	// CheckHealth Check service health
+	//
+	// Check whether the QER service is healthy and able to serve requests.
+	//
+	// Corresponds with GET /health (the `CheckHealth` operationId).
+	CheckHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateQueueWithBody Create a queue
+	//
+	// Create a new queue with the specified name.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /queues (the `CreateQueue` operationId).
+	CreateQueueWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateQueue Create a queue
+	//
+	// Create a new queue with the specified name.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /queues (the `CreateQueue` operationId).
+	CreateQueue(ctx context.Context, body CreateQueueJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AckJobWithBody Acknowledge a job
+	//
+	// Acknowledge a previously reserved job, marking it as complete and releasing its lease.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /queues/{queue_name}/ack (the `AckJob` operationId).
+	AckJobWithBody(ctx context.Context, queueName QueueName, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AckJob Acknowledge a job
+	//
+	// Acknowledge a previously reserved job, marking it as complete and releasing its lease.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /queues/{queue_name}/ack (the `AckJob` operationId).
+	AckJob(ctx context.Context, queueName QueueName, body AckJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutJobWithBody Put a job
+	//
+	// Add a new job to the specified queue.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /queues/{queue_name}/put (the `PutJob` operationId).
+	PutJobWithBody(ctx context.Context, queueName QueueName, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutJob Put a job
+	//
+	// Add a new job to the specified queue.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /queues/{queue_name}/put (the `PutJob` operationId).
+	PutJob(ctx context.Context, queueName QueueName, body PutJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReserveJob Reserve a job
+	//
+	// Reserve the next available job from the specified queue.
+	//
+	// Corresponds with POST /queues/{queue_name}/reserve (the `ReserveJob` operationId).
+	ReserveJob(ctx context.Context, queueName QueueName, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CheckReady Check service readiness
+	//
+	// Check whether the QER service is ready to accept requests.
+	//
+	// Corresponds with GET /ready (the `CheckReady` operationId).
+	CheckReady(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AttachConsumer Attach a consumer
+	//
+	// Register a consumer with the QER engine and issue a signed worker token scoped to consuming jobs.
+	//
+	// Corresponds with POST /workers/consumer (the `AttachConsumer` operationId).
+	AttachConsumer(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AttachProducer Attach a producer
+	//
+	// Register a producer with the QER engine and issue a signed worker token scoped to producing jobs.
+	//
+	// Corresponds with POST /workers/producer (the `AttachProducer` operationId).
+	AttachProducer(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+// CheckHealth Check service health
+//
+// Check whether the QER service is healthy and able to serve requests.
+//
+// Corresponds with GET /health (the `CheckHealth` operationId).
+func (c *Client) CheckHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckHealthRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateQueueWithBody Create a queue
+//
+// Create a new queue with the specified name.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /queues (the `CreateQueue` operationId).
+func (c *Client) CreateQueueWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateQueueRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateQueue Create a queue
+//
+// Create a new queue with the specified name.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /queues (the `CreateQueue` operationId).
+func (c *Client) CreateQueue(ctx context.Context, body CreateQueueJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateQueueRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AckJobWithBody Acknowledge a job
+//
+// Acknowledge a previously reserved job, marking it as complete and releasing its lease.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /queues/{queue_name}/ack (the `AckJob` operationId).
+func (c *Client) AckJobWithBody(ctx context.Context, queueName QueueName, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAckJobRequestWithBody(c.Server, queueName, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AckJob Acknowledge a job
+//
+// Acknowledge a previously reserved job, marking it as complete and releasing its lease.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /queues/{queue_name}/ack (the `AckJob` operationId).
+func (c *Client) AckJob(ctx context.Context, queueName QueueName, body AckJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAckJobRequest(c.Server, queueName, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutJobWithBody Put a job
+//
+// Add a new job to the specified queue.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /queues/{queue_name}/put (the `PutJob` operationId).
+func (c *Client) PutJobWithBody(ctx context.Context, queueName QueueName, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutJobRequestWithBody(c.Server, queueName, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutJob Put a job
+//
+// Add a new job to the specified queue.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /queues/{queue_name}/put (the `PutJob` operationId).
+func (c *Client) PutJob(ctx context.Context, queueName QueueName, body PutJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutJobRequest(c.Server, queueName, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReserveJob Reserve a job
+//
+// Reserve the next available job from the specified queue.
+//
+// Corresponds with POST /queues/{queue_name}/reserve (the `ReserveJob` operationId).
+func (c *Client) ReserveJob(ctx context.Context, queueName QueueName, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReserveJobRequest(c.Server, queueName)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CheckReady Check service readiness
+//
+// Check whether the QER service is ready to accept requests.
+//
+// Corresponds with GET /ready (the `CheckReady` operationId).
+func (c *Client) CheckReady(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckReadyRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AttachConsumer Attach a consumer
+//
+// Register a consumer with the QER engine and issue a signed worker token scoped to consuming jobs.
+//
+// Corresponds with POST /workers/consumer (the `AttachConsumer` operationId).
+func (c *Client) AttachConsumer(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAttachConsumerRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AttachProducer Attach a producer
+//
+// Register a producer with the QER engine and issue a signed worker token scoped to producing jobs.
+//
+// Corresponds with POST /workers/producer (the `AttachProducer` operationId).
+func (c *Client) AttachProducer(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAttachProducerRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// NewCheckHealthRequest constructs an http.Request for the CheckHealth method
+func NewCheckHealthRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/health")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateQueueRequest calls the generic CreateQueue builder with application/json body
+func NewCreateQueueRequest(server string, body CreateQueueJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateQueueRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateQueueRequestWithBody constructs an http.Request for the CreateQueue method, with any body, and a specified content type
+func NewCreateQueueRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/queues")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAckJobRequest calls the generic AckJob builder with application/json body
+func NewAckJobRequest(server string, queueName QueueName, body AckJobJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAckJobRequestWithBody(server, queueName, "application/json", bodyReader)
+}
+
+// NewAckJobRequestWithBody constructs an http.Request for the AckJob method, with any body, and a specified content type
+func NewAckJobRequestWithBody(server string, queueName QueueName, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "queue_name", queueName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/queues/%s/ack", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPutJobRequest calls the generic PutJob builder with application/json body
+func NewPutJobRequest(server string, queueName QueueName, body PutJobJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutJobRequestWithBody(server, queueName, "application/json", bodyReader)
+}
+
+// NewPutJobRequestWithBody constructs an http.Request for the PutJob method, with any body, and a specified content type
+func NewPutJobRequestWithBody(server string, queueName QueueName, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "queue_name", queueName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/queues/%s/put", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewReserveJobRequest constructs an http.Request for the ReserveJob method
+func NewReserveJobRequest(server string, queueName QueueName) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "queue_name", queueName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/queues/%s/reserve", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCheckReadyRequest constructs an http.Request for the CheckReady method
+func NewCheckReadyRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/ready")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAttachConsumerRequest constructs an http.Request for the AttachConsumer method
+func NewAttachConsumerRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/workers/consumer")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAttachProducerRequest constructs an http.Request for the AttachProducer method
+func NewAttachProducerRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/workers/producer")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
+	for _, r := range c.RequestEditors {
+		if err := r(ctx, req); err != nil {
+			return err
+		}
+	}
+	for _, r := range additionalEditors {
+		if err := r(ctx, req); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ClientWithResponses builds on ClientInterface to offer response payloads
+type ClientWithResponses struct {
+	ClientInterface
+}
+
+// NewClientWithResponses creates a new ClientWithResponses, which wraps
+// Client with return type handling
+func NewClientWithResponses(server string, opts ...ClientOption) (*ClientWithResponses, error) {
+	client, err := NewClient(server, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &ClientWithResponses{client}, nil
+}
+
+// WithBaseURL overrides the baseURL.
+func WithBaseURL(baseURL string) ClientOption {
+	return func(c *Client) error {
+		newBaseURL, err := url.Parse(baseURL)
+		if err != nil {
+			return err
+		}
+		c.Server = newBaseURL.String()
+		return nil
+	}
+}
+
+// ClientWithResponsesInterface is the interface specification for the client with responses above.
+type ClientWithResponsesInterface interface {
+
+	// CheckHealthWithResponse Check service health
+	//
+	// Check whether the QER service is healthy and able to serve requests.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /health (the `CheckHealth` operationId).
+	CheckHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*CheckHealthResponse, error)
+
+	// CreateQueueWithBodyWithResponse Create a queue
+	//
+	// Create a new queue with the specified name.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /queues (the `CreateQueue` operationId).
+	CreateQueueWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateQueueResponse, error)
+
+	// CreateQueueWithResponse Create a queue
+	//
+	// Create a new queue with the specified name.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /queues (the `CreateQueue` operationId).
+	CreateQueueWithResponse(ctx context.Context, body CreateQueueJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateQueueResponse, error)
+
+	// AckJobWithBodyWithResponse Acknowledge a job
+	//
+	// Acknowledge a previously reserved job, marking it as complete and releasing its lease.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /queues/{queue_name}/ack (the `AckJob` operationId).
+	AckJobWithBodyWithResponse(ctx context.Context, queueName QueueName, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AckJobResponse, error)
+
+	// AckJobWithResponse Acknowledge a job
+	//
+	// Acknowledge a previously reserved job, marking it as complete and releasing its lease.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /queues/{queue_name}/ack (the `AckJob` operationId).
+	AckJobWithResponse(ctx context.Context, queueName QueueName, body AckJobJSONRequestBody, reqEditors ...RequestEditorFn) (*AckJobResponse, error)
+
+	// PutJobWithBodyWithResponse Put a job
+	//
+	// Add a new job to the specified queue.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /queues/{queue_name}/put (the `PutJob` operationId).
+	PutJobWithBodyWithResponse(ctx context.Context, queueName QueueName, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutJobResponse, error)
+
+	// PutJobWithResponse Put a job
+	//
+	// Add a new job to the specified queue.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /queues/{queue_name}/put (the `PutJob` operationId).
+	PutJobWithResponse(ctx context.Context, queueName QueueName, body PutJobJSONRequestBody, reqEditors ...RequestEditorFn) (*PutJobResponse, error)
+
+	// ReserveJobWithResponse Reserve a job
+	//
+	// Reserve the next available job from the specified queue.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /queues/{queue_name}/reserve (the `ReserveJob` operationId).
+	ReserveJobWithResponse(ctx context.Context, queueName QueueName, reqEditors ...RequestEditorFn) (*ReserveJobResponse, error)
+
+	// CheckReadyWithResponse Check service readiness
+	//
+	// Check whether the QER service is ready to accept requests.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /ready (the `CheckReady` operationId).
+	CheckReadyWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*CheckReadyResponse, error)
+
+	// AttachConsumerWithResponse Attach a consumer
+	//
+	// Register a consumer with the QER engine and issue a signed worker token scoped to consuming jobs.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /workers/consumer (the `AttachConsumer` operationId).
+	AttachConsumerWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*AttachConsumerResponse, error)
+
+	// AttachProducerWithResponse Attach a producer
+	//
+	// Register a producer with the QER engine and issue a signed worker token scoped to producing jobs.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /workers/producer (the `AttachProducer` operationId).
+	AttachProducerWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*AttachProducerResponse, error)
+}
+
+type CheckHealthResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *HealthResponse
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *HealthResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CheckHealthResponse) GetJSON200() *HealthResponse {
+	return r.JSON200
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r CheckHealthResponse) GetJSON503() *HealthResponse {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CheckHealthResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CheckHealthResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CheckHealthResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CheckHealthResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// CreateQueueResponse201Headers the declared response headers of an HTTP 201 response for CreateQueue
+type CreateQueueResponse201Headers struct {
+	XRefreshWorkerToken *string
+}
+
+// CreateQueueResponse400Headers the declared response headers of an HTTP 400 response for CreateQueue
+type CreateQueueResponse400Headers struct {
+	XRefreshWorkerToken *string
+}
+
+// CreateQueueResponse409Headers the declared response headers of an HTTP 409 response for CreateQueue
+type CreateQueueResponse409Headers struct {
+	XRefreshWorkerToken *string
+}
+
+// CreateQueueResponse500Headers the declared response headers of an HTTP 500 response for CreateQueue
+type CreateQueueResponse500Headers struct {
+	XRefreshWorkerToken *string
+}
+
+type CreateQueueResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *QueueResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *ErrorResponse
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+	// Headers201 the parsed response headers for an HTTP 201 response
+	Headers201 *CreateQueueResponse201Headers
+	// Headers400 the parsed response headers for an HTTP 400 response
+	Headers400 *CreateQueueResponse400Headers
+	// Headers409 the parsed response headers for an HTTP 409 response
+	Headers409 *CreateQueueResponse409Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *CreateQueueResponse500Headers
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateQueueResponse) GetJSON201() *QueueResponse {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateQueueResponse) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateQueueResponse) GetJSON401() *ErrorResponse {
+	return r.JSON401
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateQueueResponse) GetJSON409() *ErrorResponse {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateQueueResponse) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateQueueResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateQueueResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateQueueResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateQueueResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// AckJobResponse204Headers the declared response headers of an HTTP 204 response for AckJob
+type AckJobResponse204Headers struct {
+	XRefreshWorkerToken *string
+}
+
+// AckJobResponse400Headers the declared response headers of an HTTP 400 response for AckJob
+type AckJobResponse400Headers struct {
+	XRefreshWorkerToken *string
+}
+
+// AckJobResponse403Headers the declared response headers of an HTTP 403 response for AckJob
+type AckJobResponse403Headers struct {
+	XRefreshWorkerToken *string
+}
+
+// AckJobResponse404Headers the declared response headers of an HTTP 404 response for AckJob
+type AckJobResponse404Headers struct {
+	XRefreshWorkerToken *string
+}
+
+// AckJobResponse500Headers the declared response headers of an HTTP 500 response for AckJob
+type AckJobResponse500Headers struct {
+	XRefreshWorkerToken *string
+}
+
+type AckJobResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *ErrorResponse
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+	// Headers204 the parsed response headers for an HTTP 204 response
+	Headers204 *AckJobResponse204Headers
+	// Headers400 the parsed response headers for an HTTP 400 response
+	Headers400 *AckJobResponse400Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *AckJobResponse403Headers
+	// Headers404 the parsed response headers for an HTTP 404 response
+	Headers404 *AckJobResponse404Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *AckJobResponse500Headers
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r AckJobResponse) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r AckJobResponse) GetJSON401() *ErrorResponse {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r AckJobResponse) GetJSON403() *ErrorResponse {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r AckJobResponse) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r AckJobResponse) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r AckJobResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AckJobResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AckJobResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AckJobResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// PutJobResponse202Headers the declared response headers of an HTTP 202 response for PutJob
+type PutJobResponse202Headers struct {
+	XRefreshWorkerToken *string
+}
+
+// PutJobResponse400Headers the declared response headers of an HTTP 400 response for PutJob
+type PutJobResponse400Headers struct {
+	XRefreshWorkerToken *string
+}
+
+// PutJobResponse403Headers the declared response headers of an HTTP 403 response for PutJob
+type PutJobResponse403Headers struct {
+	XRefreshWorkerToken *string
+}
+
+// PutJobResponse404Headers the declared response headers of an HTTP 404 response for PutJob
+type PutJobResponse404Headers struct {
+	XRefreshWorkerToken *string
+}
+
+// PutJobResponse500Headers the declared response headers of an HTTP 500 response for PutJob
+type PutJobResponse500Headers struct {
+	XRefreshWorkerToken *string
+}
+
+type PutJobResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *PutJobResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *ErrorResponse
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+	// Headers202 the parsed response headers for an HTTP 202 response
+	Headers202 *PutJobResponse202Headers
+	// Headers400 the parsed response headers for an HTTP 400 response
+	Headers400 *PutJobResponse400Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *PutJobResponse403Headers
+	// Headers404 the parsed response headers for an HTTP 404 response
+	Headers404 *PutJobResponse404Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *PutJobResponse500Headers
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r PutJobResponse) GetJSON202() *PutJobResult {
+	return r.JSON202
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PutJobResponse) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PutJobResponse) GetJSON401() *ErrorResponse {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PutJobResponse) GetJSON403() *ErrorResponse {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PutJobResponse) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PutJobResponse) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r PutJobResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PutJobResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutJobResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PutJobResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ReserveJobResponse200Headers the declared response headers of an HTTP 200 response for ReserveJob
+type ReserveJobResponse200Headers struct {
+	XRefreshWorkerToken *string
+}
+
+// ReserveJobResponse204Headers the declared response headers of an HTTP 204 response for ReserveJob
+type ReserveJobResponse204Headers struct {
+	XRefreshWorkerToken *string
+}
+
+// ReserveJobResponse403Headers the declared response headers of an HTTP 403 response for ReserveJob
+type ReserveJobResponse403Headers struct {
+	XRefreshWorkerToken *string
+}
+
+// ReserveJobResponse404Headers the declared response headers of an HTTP 404 response for ReserveJob
+type ReserveJobResponse404Headers struct {
+	XRefreshWorkerToken *string
+}
+
+// ReserveJobResponse500Headers the declared response headers of an HTTP 500 response for ReserveJob
+type ReserveJobResponse500Headers struct {
+	XRefreshWorkerToken *string
+}
+
+type ReserveJobResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ReserveJobResult
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *ErrorResponse
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ReserveJobResponse200Headers
+	// Headers204 the parsed response headers for an HTTP 204 response
+	Headers204 *ReserveJobResponse204Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *ReserveJobResponse403Headers
+	// Headers404 the parsed response headers for an HTTP 404 response
+	Headers404 *ReserveJobResponse404Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *ReserveJobResponse500Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ReserveJobResponse) GetJSON200() *ReserveJobResult {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ReserveJobResponse) GetJSON401() *ErrorResponse {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ReserveJobResponse) GetJSON403() *ErrorResponse {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ReserveJobResponse) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ReserveJobResponse) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ReserveJobResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReserveJobResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReserveJobResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReserveJobResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CheckReadyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ReadyResponse
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *ReadyResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CheckReadyResponse) GetJSON200() *ReadyResponse {
+	return r.JSON200
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r CheckReadyResponse) GetJSON503() *ReadyResponse {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CheckReadyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CheckReadyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CheckReadyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CheckReadyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type AttachConsumerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *WorkerToken
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AttachConsumerResponse) GetJSON200() *WorkerToken {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r AttachConsumerResponse) GetJSON401() *ErrorResponse {
+	return r.JSON401
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r AttachConsumerResponse) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r AttachConsumerResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AttachConsumerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AttachConsumerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AttachConsumerResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type AttachProducerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *WorkerToken
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AttachProducerResponse) GetJSON200() *WorkerToken {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r AttachProducerResponse) GetJSON401() *ErrorResponse {
+	return r.JSON401
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r AttachProducerResponse) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r AttachProducerResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AttachProducerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AttachProducerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AttachProducerResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// CheckHealthWithResponse Check service health
+//
+// Check whether the QER service is healthy and able to serve requests.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /health (the `CheckHealth` operationId).
+func (c *ClientWithResponses) CheckHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*CheckHealthResponse, error) {
+	rsp, err := c.CheckHealth(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckHealthResponse(rsp)
+}
+
+// CreateQueueWithBodyWithResponse Create a queue
+//
+// Create a new queue with the specified name.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /queues (the `CreateQueue` operationId).
+func (c *ClientWithResponses) CreateQueueWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateQueueResponse, error) {
+	rsp, err := c.CreateQueueWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateQueueResponse(rsp)
+}
+
+// CreateQueueWithResponse Create a queue
+//
+// Create a new queue with the specified name.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /queues (the `CreateQueue` operationId).
+func (c *ClientWithResponses) CreateQueueWithResponse(ctx context.Context, body CreateQueueJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateQueueResponse, error) {
+	rsp, err := c.CreateQueue(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateQueueResponse(rsp)
+}
+
+// AckJobWithBodyWithResponse Acknowledge a job
+//
+// Acknowledge a previously reserved job, marking it as complete and releasing its lease.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /queues/{queue_name}/ack (the `AckJob` operationId).
+func (c *ClientWithResponses) AckJobWithBodyWithResponse(ctx context.Context, queueName QueueName, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AckJobResponse, error) {
+	rsp, err := c.AckJobWithBody(ctx, queueName, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAckJobResponse(rsp)
+}
+
+// AckJobWithResponse Acknowledge a job
+//
+// Acknowledge a previously reserved job, marking it as complete and releasing its lease.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /queues/{queue_name}/ack (the `AckJob` operationId).
+func (c *ClientWithResponses) AckJobWithResponse(ctx context.Context, queueName QueueName, body AckJobJSONRequestBody, reqEditors ...RequestEditorFn) (*AckJobResponse, error) {
+	rsp, err := c.AckJob(ctx, queueName, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAckJobResponse(rsp)
+}
+
+// PutJobWithBodyWithResponse Put a job
+//
+// Add a new job to the specified queue.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /queues/{queue_name}/put (the `PutJob` operationId).
+func (c *ClientWithResponses) PutJobWithBodyWithResponse(ctx context.Context, queueName QueueName, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutJobResponse, error) {
+	rsp, err := c.PutJobWithBody(ctx, queueName, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutJobResponse(rsp)
+}
+
+// PutJobWithResponse Put a job
+//
+// Add a new job to the specified queue.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /queues/{queue_name}/put (the `PutJob` operationId).
+func (c *ClientWithResponses) PutJobWithResponse(ctx context.Context, queueName QueueName, body PutJobJSONRequestBody, reqEditors ...RequestEditorFn) (*PutJobResponse, error) {
+	rsp, err := c.PutJob(ctx, queueName, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutJobResponse(rsp)
+}
+
+// ReserveJobWithResponse Reserve a job
+//
+// Reserve the next available job from the specified queue.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /queues/{queue_name}/reserve (the `ReserveJob` operationId).
+func (c *ClientWithResponses) ReserveJobWithResponse(ctx context.Context, queueName QueueName, reqEditors ...RequestEditorFn) (*ReserveJobResponse, error) {
+	rsp, err := c.ReserveJob(ctx, queueName, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReserveJobResponse(rsp)
+}
+
+// CheckReadyWithResponse Check service readiness
+//
+// Check whether the QER service is ready to accept requests.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /ready (the `CheckReady` operationId).
+func (c *ClientWithResponses) CheckReadyWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*CheckReadyResponse, error) {
+	rsp, err := c.CheckReady(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckReadyResponse(rsp)
+}
+
+// AttachConsumerWithResponse Attach a consumer
+//
+// Register a consumer with the QER engine and issue a signed worker token scoped to consuming jobs.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /workers/consumer (the `AttachConsumer` operationId).
+func (c *ClientWithResponses) AttachConsumerWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*AttachConsumerResponse, error) {
+	rsp, err := c.AttachConsumer(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAttachConsumerResponse(rsp)
+}
+
+// AttachProducerWithResponse Attach a producer
+//
+// Register a producer with the QER engine and issue a signed worker token scoped to producing jobs.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /workers/producer (the `AttachProducer` operationId).
+func (c *ClientWithResponses) AttachProducerWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*AttachProducerResponse, error) {
+	rsp, err := c.AttachProducer(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAttachProducerResponse(rsp)
+}
+
+// ParseCheckHealthResponse parses an HTTP response from a CheckHealthWithResponse call
+func ParseCheckHealthResponse(rsp *http.Response) (*CheckHealthResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CheckHealthResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HealthResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest HealthResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateQueueResponse parses an HTTP response from a CreateQueueWithResponse call
+func ParseCreateQueueResponse(rsp *http.Response) (*CreateQueueResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateQueueResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest QueueResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 201:
+		var headers CreateQueueResponse201Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers201 = &headers
+	case rsp.StatusCode == 400:
+		var headers CreateQueueResponse400Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers400 = &headers
+	case rsp.StatusCode == 409:
+		var headers CreateQueueResponse409Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers409 = &headers
+	case rsp.StatusCode == 500:
+		var headers CreateQueueResponse500Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers500 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseAckJobResponse parses an HTTP response from a AckJobWithResponse call
+func ParseAckJobResponse(rsp *http.Response) (*AckJobResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AckJobResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		var headers AckJobResponse204Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers204 = &headers
+	case rsp.StatusCode == 400:
+		var headers AckJobResponse400Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers400 = &headers
+	case rsp.StatusCode == 403:
+		var headers AckJobResponse403Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 404:
+		var headers AckJobResponse404Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers404 = &headers
+	case rsp.StatusCode == 500:
+		var headers AckJobResponse500Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers500 = &headers
+	}
+
+	return response, nil
+}
+
+// ParsePutJobResponse parses an HTTP response from a PutJobWithResponse call
+func ParsePutJobResponse(rsp *http.Response) (*PutJobResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutJobResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest PutJobResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 202:
+		var headers PutJobResponse202Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers202 = &headers
+	case rsp.StatusCode == 400:
+		var headers PutJobResponse400Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers400 = &headers
+	case rsp.StatusCode == 403:
+		var headers PutJobResponse403Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 404:
+		var headers PutJobResponse404Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers404 = &headers
+	case rsp.StatusCode == 500:
+		var headers PutJobResponse500Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers500 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseReserveJobResponse parses an HTTP response from a ReserveJobWithResponse call
+func ParseReserveJobResponse(rsp *http.Response) (*ReserveJobResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReserveJobResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ReserveJobResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ReserveJobResponse200Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 204:
+		var headers ReserveJobResponse204Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers204 = &headers
+	case rsp.StatusCode == 403:
+		var headers ReserveJobResponse403Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 404:
+		var headers ReserveJobResponse404Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers404 = &headers
+	case rsp.StatusCode == 500:
+		var headers ReserveJobResponse500Headers
+		if values := rsp.Header.Values("X-Refresh-Worker-Token"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Refresh-Worker-Token", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRefreshWorkerToken = &value
+		}
+		response.Headers500 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseCheckReadyResponse parses an HTTP response from a CheckReadyWithResponse call
+func ParseCheckReadyResponse(rsp *http.Response) (*CheckReadyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CheckReadyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ReadyResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ReadyResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAttachConsumerResponse parses an HTTP response from a AttachConsumerWithResponse call
+func ParseAttachConsumerResponse(rsp *http.Response) (*AttachConsumerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AttachConsumerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest WorkerToken
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAttachProducerResponse parses an HTTP response from a AttachProducerWithResponse call
+func ParseAttachProducerResponse(rsp *http.Response) (*AttachProducerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AttachProducerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest WorkerToken
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -818,7 +2968,7 @@ type PutJob202ResponseHeaders struct {
 }
 
 type PutJob202JSONResponse struct {
-	Body    PutJobResponse
+	Body    PutJobResult
 	Headers PutJob202ResponseHeaders
 }
 
@@ -960,7 +3110,7 @@ type ReserveJob200ResponseHeaders struct {
 }
 
 type ReserveJob200JSONResponse struct {
-	Body    ReserveJobResponse
+	Body    ReserveJobResult
 	Headers ReserveJob200ResponseHeaders
 }
 
