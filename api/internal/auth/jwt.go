@@ -7,10 +7,11 @@ import (
 	"uuid"
 
 	"github.com/golang-jwt/jwt/v5"
+	qerv1 "github.com/noahlavelle/qer/gen/qer/v1"
 )
 
 type Claims struct {
-	Scopes   []string `json:"scopes"`
+	Scopes   []qerv1.Scope `json:"scopes"`
 	jwt.RegisteredClaims
 }
 
@@ -37,7 +38,7 @@ func NewAuthenticator(
 
 func (a *Authenticator) SignWithScopes(
 	subject string,
-	scopes []string,
+	scopes []qerv1.Scope,
 ) (string, error) {
 	now := time.Now()
 

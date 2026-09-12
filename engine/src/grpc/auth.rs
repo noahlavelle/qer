@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tonic::Request;
 
-use crate::engine::WorkerID;
+use crate::{engine::WorkerID, proto::qer};
 
 #[derive(Error, Debug)]
 pub enum AuthError {
@@ -21,32 +21,16 @@ pub enum AuthError {
     InvalidAudience,
     #[error("token is missing required claim: {0}")]
     MissingClaim(String),
-    #[error("missing authenticated worker")]
+    #[error("token contains an unknown scope: {0}")]
+    InvalidScope(i32),
+    #[error("missing or insufficiently authenticated worker")]
     NotAuthed,
-    #[error("insufficient scopes")]
-    NotScoped,
-}
-
-pub enum Scope {
-    CreateQueue,
-    Produce,
-    Consume,
-}
-
-impl Scope {
-    pub fn as_str(&self) -> &str {
-        match self {
-            Scope::CreateQueue => "queue.create",
-            Scope::Produce => "queue.produce",
-            Scope::Consume => "queue.consume",
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkerClaims {
     sub: String,
-    scopes: Vec<String>,
+    scopes: Vec<i32>,
     iss: String,
     aud: Vec<String>,
     exp: usize,
@@ -58,7 +42,7 @@ pub struct WorkerClaims {
 #[derive(Clone)]
 pub struct AuthenticatedWorker {
     pub worker_id: WorkerID,
-    pub scopes: Vec<String>,
+    pub scopes: Vec<qer::v1::Scope>,
 }
 
 impl AuthenticatedWorker {
@@ -70,18 +54,21 @@ impl AuthenticatedWorker {
             return Err(AuthError::MissingClaim("scopes".to_owned()));
         }
 
-        Ok(Self {
-            worker_id,
-            scopes: claims.scopes,
-        })
+        let scopes = claims
+            .scopes
+            .into_iter()
+            .map(|s| qer::v1::Scope::try_from(s).map_err(|_| AuthError::InvalidScope(s)))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Self { worker_id, scopes })
     }
 
-    pub fn check_scope(&self, scope: Scope) -> Result<(), AuthError> {
-        if self.scopes.contains(&scope.as_str().to_owned()) {
+    pub fn check_scope(&self, scope: qer::v1::Scope) -> Result<(), AuthError> {
+        if self.scopes.contains(&scope) {
             return Ok(());
         }
 
-        Err(AuthError::NotScoped)
+        Err(AuthError::NotAuthed)
     }
 }
 
@@ -130,14 +117,14 @@ mod tests {
 
     fn make_claims(
         sub: &str,
-        scopes: Vec<&str>,
+        scopes: Vec<qer::v1::Scope>,
         iss: &str,
         aud: &str,
         exp_offset: i64,
     ) -> WorkerClaims {
         WorkerClaims {
             sub: sub.to_owned(),
-            scopes: scopes.into_iter().map(String::from).collect(),
+            scopes: scopes.into_iter().map(i32::from).collect(),
             iss: iss.to_owned(),
             aud: vec![aud.to_owned()],
             exp: (now() + exp_offset) as usize,
@@ -159,7 +146,7 @@ mod tests {
     fn valid_token() -> String {
         let claims = make_claims(
             "worker-1",
-            vec!["reserve", "ack"],
+            vec![qer::v1::Scope::QueueConsume, qer::v1::Scope::QueueProduce],
             "qer-api",
             "qer-engine",
             3600,
@@ -179,14 +166,20 @@ mod tests {
     fn validate_jwt_accepts_a_valid_token() {
         let claims = validate_jwt(&valid_token()).unwrap();
         assert_eq!(claims.sub, "worker-1");
-        assert_eq!(claims.scopes, vec!["reserve", "ack"]);
+        assert_eq!(
+            claims.scopes,
+            vec![
+                qer::v1::Scope::QueueConsume as i32,
+                qer::v1::Scope::QueueProduce as i32
+            ]
+        );
     }
 
     #[test]
     fn validate_jwt_rejects_wrong_issuer() {
         let claims = make_claims(
             "worker-1",
-            vec!["reserve"],
+            vec![qer::v1::Scope::QueueConsume],
             "someone-else",
             "qer-engine",
             3600,
@@ -199,7 +192,13 @@ mod tests {
 
     #[test]
     fn validate_jwt_rejects_wrong_audience() {
-        let claims = make_claims("worker-1", vec!["reserve"], "qer-api", "someone-else", 3600);
+        let claims = make_claims(
+            "worker-1",
+            vec![qer::v1::Scope::QueueConsume],
+            "qer-api",
+            "someone-else",
+            3600,
+        );
         let token = token_signed_with(&claims, b"secret");
 
         let err = expect_err(validate_jwt(&token));
@@ -208,7 +207,13 @@ mod tests {
 
     #[test]
     fn validate_jwt_rejects_expired_token() {
-        let claims = make_claims("worker-1", vec!["reserve"], "qer-api", "qer-engine", -3600);
+        let claims = make_claims(
+            "worker-1",
+            vec![qer::v1::Scope::QueueConsume],
+            "qer-api",
+            "qer-engine",
+            -3600,
+        );
         let token = token_signed_with(&claims, b"secret");
 
         let err = expect_err(validate_jwt(&token));
@@ -217,7 +222,13 @@ mod tests {
 
     #[test]
     fn validate_jwt_rejects_a_bad_signature() {
-        let claims = make_claims("worker-1", vec!["reserve"], "qer-api", "qer-engine", 3600);
+        let claims = make_claims(
+            "worker-1",
+            vec![qer::v1::Scope::QueueConsume],
+            "qer-api",
+            "qer-engine",
+            3600,
+        );
         let token = token_signed_with(&claims, b"not-the-real-secret");
 
         let err = expect_err(validate_jwt(&token));
@@ -231,11 +242,17 @@ mod tests {
 
     #[test]
     fn authenticated_worker_new_succeeds_with_valid_claims() {
-        let claims = make_claims("worker-1", vec!["reserve"], "qer-api", "qer-engine", 3600);
+        let claims = make_claims(
+            "worker-1",
+            vec![qer::v1::Scope::QueueConsume],
+            "qer-api",
+            "qer-engine",
+            3600,
+        );
         let worker = AuthenticatedWorker::new(claims).unwrap();
 
         assert_eq!(worker.worker_id.as_str(), "worker-1");
-        assert_eq!(worker.scopes, vec!["reserve"]);
+        assert_eq!(worker.scopes, vec![qer::v1::Scope::QueueConsume]);
     }
 
     #[test]
@@ -247,9 +264,29 @@ mod tests {
 
     #[test]
     fn authenticated_worker_new_rejects_empty_sub() {
-        let claims = make_claims("", vec!["reserve"], "qer-api", "qer-engine", 3600);
+        let claims = make_claims(
+            "",
+            vec![qer::v1::Scope::QueueConsume],
+            "qer-api",
+            "qer-engine",
+            3600,
+        );
         let err = expect_err(AuthenticatedWorker::new(claims));
         assert!(matches!(err, AuthError::MissingClaim(claim) if claim == "sub"));
+    }
+
+    #[test]
+    fn authenticated_worker_new_rejects_an_unknown_scope() {
+        let mut claims = make_claims(
+            "worker-1",
+            vec![qer::v1::Scope::QueueConsume],
+            "qer-api",
+            "qer-engine",
+            3600,
+        );
+        claims.scopes.push(99);
+        let err = expect_err(AuthenticatedWorker::new(claims));
+        assert!(matches!(err, AuthError::InvalidScope(99)));
     }
 
     #[test]
@@ -264,59 +301,48 @@ mod tests {
         let mut request = Request::new(());
         request.extensions_mut().insert(AuthenticatedWorker {
             worker_id: WorkerID::new("worker-1").unwrap(),
-            scopes: vec!["reserve".to_owned()],
+            scopes: vec![qer::v1::Scope::QueueConsume],
         });
 
         let worker = auth_from_request(&request).unwrap();
         assert_eq!(worker.worker_id.as_str(), "worker-1");
-        assert_eq!(worker.scopes, vec!["reserve"]);
+        assert_eq!(worker.scopes, vec![qer::v1::Scope::QueueConsume]);
     }
 
-    #[test]
-    fn scope_as_str_maps_each_variant() {
-        assert_eq!(Scope::CreateQueue.as_str(), "queue.create");
-        assert_eq!(Scope::Produce.as_str(), "queue.produce");
-        assert_eq!(Scope::Consume.as_str(), "queue.consume");
-    }
-
-    fn worker_with_scopes(scopes: Vec<&str>) -> AuthenticatedWorker {
+    fn worker_with_scopes(scopes: Vec<qer::v1::Scope>) -> AuthenticatedWorker {
         AuthenticatedWorker {
             worker_id: WorkerID::new("worker-1").unwrap(),
-            scopes: scopes.into_iter().map(String::from).collect(),
+            scopes,
         }
     }
 
     #[test]
     fn check_scope_accepts_a_worker_with_the_scope() {
-        let worker = worker_with_scopes(vec!["queue.create"]);
-        assert!(worker.check_scope(Scope::CreateQueue).is_ok());
+        let worker = worker_with_scopes(vec![qer::v1::Scope::QueueCreate]);
+        assert!(worker.check_scope(qer::v1::Scope::QueueCreate).is_ok());
     }
 
     #[test]
     fn check_scope_accepts_a_worker_with_extra_scopes() {
-        let worker = worker_with_scopes(vec!["queue.produce", "queue.consume"]);
-        assert!(worker.check_scope(Scope::Produce).is_ok());
-        assert!(worker.check_scope(Scope::Consume).is_ok());
+        let worker = worker_with_scopes(vec![
+            qer::v1::Scope::QueueProduce,
+            qer::v1::Scope::QueueConsume,
+        ]);
+        assert!(worker.check_scope(qer::v1::Scope::QueueProduce).is_ok());
+        assert!(worker.check_scope(qer::v1::Scope::QueueConsume).is_ok());
     }
 
     #[test]
     fn check_scope_rejects_a_worker_missing_the_scope() {
-        let worker = worker_with_scopes(vec!["queue.produce"]);
-        let err = expect_err(worker.check_scope(Scope::CreateQueue));
+        let worker = worker_with_scopes(vec![qer::v1::Scope::QueueProduce]);
+        let err = expect_err(worker.check_scope(qer::v1::Scope::QueueCreate));
         assert!(matches!(err, AuthError::NotScoped));
     }
 
     #[test]
     fn check_scope_rejects_a_worker_with_no_scopes() {
         let worker = worker_with_scopes(vec![]);
-        let err = expect_err(worker.check_scope(Scope::Consume));
-        assert!(matches!(err, AuthError::NotScoped));
-    }
-
-    #[test]
-    fn check_scope_does_not_match_on_a_substring() {
-        let worker = worker_with_scopes(vec!["queue.create.extra"]);
-        let err = expect_err(worker.check_scope(Scope::CreateQueue));
+        let err = expect_err(worker.check_scope(qer::v1::Scope::QueueConsume));
         assert!(matches!(err, AuthError::NotScoped));
     }
 }

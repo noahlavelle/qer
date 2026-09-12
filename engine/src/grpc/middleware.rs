@@ -26,12 +26,12 @@ mod tests {
     use tonic::{Code, Request};
 
     use super::*;
-    use crate::grpc::auth::AuthenticatedWorker;
+    use crate::{grpc::auth::AuthenticatedWorker, proto::qer};
 
     #[derive(Serialize)]
     struct TestClaims {
         sub: String,
-        scopes: Vec<String>,
+        scopes: Vec<i32>,
         iss: String,
         aud: Vec<String>,
         exp: usize,
@@ -47,10 +47,10 @@ mod tests {
             .as_secs() as i64
     }
 
-    fn token(sub: &str, scopes: Vec<&str>, iss: &str, aud: &str, exp_offset: i64) -> String {
+    fn token(sub: &str, scopes: Vec<qer::v1::Scope>, iss: &str, aud: &str, exp_offset: i64) -> String {
         let claims = TestClaims {
             sub: sub.to_owned(),
-            scopes: scopes.into_iter().map(String::from).collect(),
+            scopes: scopes.into_iter().map(i32::from).collect(),
             iss: iss.to_owned(),
             aud: vec![aud.to_owned()],
             exp: (now() + exp_offset) as usize,
@@ -92,7 +92,13 @@ mod tests {
 
     #[test]
     fn expired_token_is_rejected() {
-        let t = token("worker-1", vec!["reserve"], "qer-api", "qer-engine", -3600);
+        let t = token(
+            "worker-1",
+            vec![qer::v1::Scope::QueueConsume],
+            "qer-api",
+            "qer-engine",
+            -3600,
+        );
         let request = request_with_token(Some(&t));
 
         let err = auth_interceptor(request).unwrap_err();
@@ -101,7 +107,13 @@ mod tests {
 
     #[test]
     fn wrong_issuer_is_rejected() {
-        let t = token("worker-1", vec!["reserve"], "someone-else", "qer-engine", 3600);
+        let t = token(
+            "worker-1",
+            vec![qer::v1::Scope::QueueConsume],
+            "someone-else",
+            "qer-engine",
+            3600,
+        );
         let request = request_with_token(Some(&t));
 
         let err = auth_interceptor(request).unwrap_err();
@@ -110,13 +122,22 @@ mod tests {
 
     #[test]
     fn valid_token_attaches_the_authenticated_worker() {
-        let t = token("worker-1", vec!["reserve", "ack"], "qer-api", "qer-engine", 3600);
+        let t = token(
+            "worker-1",
+            vec![qer::v1::Scope::QueueConsume, qer::v1::Scope::QueueProduce],
+            "qer-api",
+            "qer-engine",
+            3600,
+        );
         let request = request_with_token(Some(&t));
 
         let request = auth_interceptor(request).unwrap();
         let worker = request.extensions().get::<AuthenticatedWorker>().unwrap();
 
         assert_eq!(worker.worker_id.as_str(), "worker-1");
-        assert_eq!(worker.scopes, vec!["reserve", "ack"]);
+        assert_eq!(
+            worker.scopes,
+            vec![qer::v1::Scope::QueueConsume, qer::v1::Scope::QueueProduce]
+        );
     }
 }

@@ -11,6 +11,12 @@ service QueueEngine {
   rpc Ack(AckRequest) returns (AckResponse);
 }
 
+enum Scope {
+  QUEUE_CREATE = 0;
+  QUEUE_PRODUCE = 1;
+  QUEUE_CONSUME = 2;
+}
+
 message CreateQueueRequest {
   string name = 1;
 }

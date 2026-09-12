@@ -21,6 +21,55 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type Scope int32
+
+const (
+	Scope_QUEUE_CREATE  Scope = 0
+	Scope_QUEUE_PRODUCE Scope = 1
+	Scope_QUEUE_CONSUME Scope = 2
+)
+
+// Enum value maps for Scope.
+var (
+	Scope_name = map[int32]string{
+		0: "QUEUE_CREATE",
+		1: "QUEUE_PRODUCE",
+		2: "QUEUE_CONSUME",
+	}
+	Scope_value = map[string]int32{
+		"QUEUE_CREATE":  0,
+		"QUEUE_PRODUCE": 1,
+		"QUEUE_CONSUME": 2,
+	}
+)
+
+func (x Scope) Enum() *Scope {
+	p := new(Scope)
+	*p = x
+	return p
+}
+
+func (x Scope) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Scope) Descriptor() protoreflect.EnumDescriptor {
+	return file_qer_v1_engine_proto_enumTypes[0].Descriptor()
+}
+
+func (Scope) Type() protoreflect.EnumType {
+	return &file_qer_v1_engine_proto_enumTypes[0]
+}
+
+func (x Scope) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Scope.Descriptor instead.
+func (Scope) EnumDescriptor() ([]byte, []int) {
+	return file_qer_v1_engine_proto_rawDescGZIP(), []int{0}
+}
+
 type CreateQueueRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -453,7 +502,11 @@ const file_qer_v1_engine_proto_rawDesc = "" +
 	"\n" +
 	"AckRequest\x12%\n" +
 	"\x0ereservation_id\x18\x01 \x01(\tR\rreservationId\"\r\n" +
-	"\vAckResponse2\xf1\x01\n" +
+	"\vAckResponse*?\n" +
+	"\x05Scope\x12\x10\n" +
+	"\fQUEUE_CREATE\x10\x00\x12\x11\n" +
+	"\rQUEUE_PRODUCE\x10\x01\x12\x11\n" +
+	"\rQUEUE_CONSUME\x10\x022\xf1\x01\n" +
 	"\vQueueEngine\x12F\n" +
 	"\vCreateQueue\x12\x1a.qer.v1.CreateQueueRequest\x1a\x1b.qer.v1.CreateQueueResponse\x12.\n" +
 	"\x03Put\x12\x12.qer.v1.PutRequest\x1a\x13.qer.v1.PutResponse\x12:\n" +
@@ -472,28 +525,30 @@ func file_qer_v1_engine_proto_rawDescGZIP() []byte {
 	return file_qer_v1_engine_proto_rawDescData
 }
 
+var file_qer_v1_engine_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_qer_v1_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_qer_v1_engine_proto_goTypes = []any{
-	(*CreateQueueRequest)(nil),  // 0: qer.v1.CreateQueueRequest
-	(*CreateQueueResponse)(nil), // 1: qer.v1.CreateQueueResponse
-	(*PutRequest)(nil),          // 2: qer.v1.PutRequest
-	(*PutResponse)(nil),         // 3: qer.v1.PutResponse
-	(*ReserveRequest)(nil),      // 4: qer.v1.ReserveRequest
-	(*ReserveResponse)(nil),     // 5: qer.v1.ReserveResponse
-	(*Reservation)(nil),         // 6: qer.v1.Reservation
-	(*AckRequest)(nil),          // 7: qer.v1.AckRequest
-	(*AckResponse)(nil),         // 8: qer.v1.AckResponse
+	(Scope)(0),                  // 0: qer.v1.Scope
+	(*CreateQueueRequest)(nil),  // 1: qer.v1.CreateQueueRequest
+	(*CreateQueueResponse)(nil), // 2: qer.v1.CreateQueueResponse
+	(*PutRequest)(nil),          // 3: qer.v1.PutRequest
+	(*PutResponse)(nil),         // 4: qer.v1.PutResponse
+	(*ReserveRequest)(nil),      // 5: qer.v1.ReserveRequest
+	(*ReserveResponse)(nil),     // 6: qer.v1.ReserveResponse
+	(*Reservation)(nil),         // 7: qer.v1.Reservation
+	(*AckRequest)(nil),          // 8: qer.v1.AckRequest
+	(*AckResponse)(nil),         // 9: qer.v1.AckResponse
 }
 var file_qer_v1_engine_proto_depIdxs = []int32{
-	6, // 0: qer.v1.ReserveResponse.reservation:type_name -> qer.v1.Reservation
-	0, // 1: qer.v1.QueueEngine.CreateQueue:input_type -> qer.v1.CreateQueueRequest
-	2, // 2: qer.v1.QueueEngine.Put:input_type -> qer.v1.PutRequest
-	4, // 3: qer.v1.QueueEngine.Reserve:input_type -> qer.v1.ReserveRequest
-	7, // 4: qer.v1.QueueEngine.Ack:input_type -> qer.v1.AckRequest
-	1, // 5: qer.v1.QueueEngine.CreateQueue:output_type -> qer.v1.CreateQueueResponse
-	3, // 6: qer.v1.QueueEngine.Put:output_type -> qer.v1.PutResponse
-	5, // 7: qer.v1.QueueEngine.Reserve:output_type -> qer.v1.ReserveResponse
-	8, // 8: qer.v1.QueueEngine.Ack:output_type -> qer.v1.AckResponse
+	7, // 0: qer.v1.ReserveResponse.reservation:type_name -> qer.v1.Reservation
+	1, // 1: qer.v1.QueueEngine.CreateQueue:input_type -> qer.v1.CreateQueueRequest
+	3, // 2: qer.v1.QueueEngine.Put:input_type -> qer.v1.PutRequest
+	5, // 3: qer.v1.QueueEngine.Reserve:input_type -> qer.v1.ReserveRequest
+	8, // 4: qer.v1.QueueEngine.Ack:input_type -> qer.v1.AckRequest
+	2, // 5: qer.v1.QueueEngine.CreateQueue:output_type -> qer.v1.CreateQueueResponse
+	4, // 6: qer.v1.QueueEngine.Put:output_type -> qer.v1.PutResponse
+	6, // 7: qer.v1.QueueEngine.Reserve:output_type -> qer.v1.ReserveResponse
+	9, // 8: qer.v1.QueueEngine.Ack:output_type -> qer.v1.AckResponse
 	5, // [5:9] is the sub-list for method output_type
 	1, // [1:5] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
@@ -512,13 +567,14 @@ func file_qer_v1_engine_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_qer_v1_engine_proto_rawDesc), len(file_qer_v1_engine_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_qer_v1_engine_proto_goTypes,
 		DependencyIndexes: file_qer_v1_engine_proto_depIdxs,
+		EnumInfos:         file_qer_v1_engine_proto_enumTypes,
 		MessageInfos:      file_qer_v1_engine_proto_msgTypes,
 	}.Build()
 	File_qer_v1_engine_proto = out.File

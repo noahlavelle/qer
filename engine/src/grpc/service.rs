@@ -7,7 +7,7 @@ use crate::{
         self,
         v1::{
             AckRequest, AckResponse, CreateQueueRequest, CreateQueueResponse, PutRequest,
-            PutResponse, ReserveRequest, ReserveResponse, queue_engine_server::QueueEngine,
+            PutResponse, ReserveRequest, ReserveResponse, Scope, queue_engine_server::QueueEngine,
         },
     },
 };
@@ -29,7 +29,7 @@ impl QueueEngine for QueueEngineService {
         request: Request<CreateQueueRequest>,
     ) -> Result<Response<CreateQueueResponse>, Status> {
         let authed_worker = auth::auth_from_request(&request)?;
-        authed_worker.check_scope(auth::Scope::CreateQueue)?;
+        authed_worker.check_scope(Scope::QueueCreate)?;
 
         let request = request.into_inner();
         let queue_id = QueueID::new(request.name)?;
@@ -41,7 +41,7 @@ impl QueueEngine for QueueEngineService {
 
     async fn put(&self, request: Request<PutRequest>) -> Result<Response<PutResponse>, Status> {
         let authed_worker = auth::auth_from_request(&request)?;
-        authed_worker.check_scope(auth::Scope::Produce)?;
+        authed_worker.check_scope(Scope::QueueProduce)?;
 
         let request = request.into_inner();
         let queue_id = QueueID::new(request.queue_name)?;
@@ -58,7 +58,7 @@ impl QueueEngine for QueueEngineService {
         request: Request<ReserveRequest>,
     ) -> Result<Response<ReserveResponse>, Status> {
         let authed_worker = auth::auth_from_request(&request)?;
-        authed_worker.check_scope(auth::Scope::Consume)?;
+        authed_worker.check_scope(Scope::QueueConsume)?;
 
         let request = request.into_inner();
         let queue_id = QueueID::new(request.queue_name)?;
@@ -82,7 +82,7 @@ impl QueueEngine for QueueEngineService {
 
     async fn ack(&self, request: Request<AckRequest>) -> Result<Response<AckResponse>, Status> {
         let authed_worker = auth::auth_from_request(&request)?;
-        authed_worker.check_scope(auth::Scope::Consume)?;
+        authed_worker.check_scope(Scope::QueueConsume)?;
 
         let request = request.into_inner();
         let reservation_id = ReservationID::new(request.reservation_id)?;
@@ -106,11 +106,11 @@ mod tests {
         QueueEngineService::new(Engine::new())
     }
 
-    fn authed_request<T>(message: T, worker: &str, scopes: Vec<&str>) -> Request<T> {
+    fn authed_request<T>(message: T, worker: &str, scopes: Vec<Scope>) -> Request<T> {
         let mut request = Request::new(message);
         request.extensions_mut().insert(auth::AuthenticatedWorker {
             worker_id: WorkerID::new(worker).unwrap(),
-            scopes: scopes.into_iter().map(String::from).collect(),
+            scopes,
         });
         request
     }
@@ -133,7 +133,7 @@ mod tests {
                     name: "orders".into(),
                 },
                 "worker-1",
-                vec!["queue.create"],
+                vec![Scope::QueueCreate],
             ))
             .await;
         assert!(response.is_ok());
@@ -159,7 +159,7 @@ mod tests {
                     name: "orders".into(),
                 },
                 "worker-1",
-                vec!["queue.produce"],
+                vec![Scope::QueueProduce],
             ))
             .await;
         assert_eq!(expect_err(result).code(), Code::Unauthenticated);
@@ -174,7 +174,7 @@ mod tests {
                     name: String::new(),
                 },
                 "worker-1",
-                vec!["queue.create"],
+                vec![Scope::QueueCreate],
             ))
             .await;
         assert_eq!(expect_err(result).code(), Code::InvalidArgument);
@@ -188,7 +188,7 @@ mod tests {
                 name: "orders".into(),
             },
             "worker-1",
-            vec!["queue.create"],
+            vec![Scope::QueueCreate],
         ))
         .await
         .unwrap();
@@ -199,7 +199,7 @@ mod tests {
                     name: "orders".into(),
                 },
                 "worker-1",
-                vec!["queue.create"],
+                vec![Scope::QueueCreate],
             ))
             .await;
         assert_eq!(expect_err(result).code(), Code::AlreadyExists);
@@ -213,7 +213,7 @@ mod tests {
                 name: "orders".into(),
             },
             "worker-1",
-            vec!["queue.create"],
+            vec![Scope::QueueCreate],
         ))
         .await
         .unwrap();
@@ -225,7 +225,7 @@ mod tests {
                     payload: vec![1, 2, 3],
                 },
                 "worker-1",
-                vec!["queue.produce"],
+                vec![Scope::QueueProduce],
             ))
             .await
             .unwrap()
@@ -256,7 +256,7 @@ mod tests {
                     payload: vec![],
                 },
                 "worker-1",
-                vec!["queue.consume"],
+                vec![Scope::QueueConsume],
             ))
             .await;
         assert_eq!(expect_err(result).code(), Code::Unauthenticated);
@@ -272,7 +272,7 @@ mod tests {
                     payload: vec![],
                 },
                 "worker-1",
-                vec!["queue.produce"],
+                vec![Scope::QueueProduce],
             ))
             .await;
         assert_eq!(expect_err(result).code(), Code::NotFound);
@@ -286,7 +286,7 @@ mod tests {
                 name: "orders".into(),
             },
             "worker-1",
-            vec!["queue.create"],
+            vec![Scope::QueueCreate],
         ))
         .await
         .unwrap();
@@ -307,7 +307,7 @@ mod tests {
                 name: "orders".into(),
             },
             "worker-1",
-            vec!["queue.create"],
+            vec![Scope::QueueCreate],
         ))
         .await
         .unwrap();
@@ -317,7 +317,7 @@ mod tests {
                 queue_name: "orders".into(),
             },
             "worker-1",
-            vec!["queue.produce"],
+            vec![Scope::QueueProduce],
         );
         let result = svc.reserve(request).await;
         assert_eq!(expect_err(result).code(), Code::Unauthenticated);
@@ -331,7 +331,7 @@ mod tests {
                 name: "orders".into(),
             },
             "worker-1",
-            vec!["queue.create"],
+            vec![Scope::QueueCreate],
         ))
         .await
         .unwrap();
@@ -341,7 +341,7 @@ mod tests {
                 queue_name: "orders".into(),
             },
             "worker-1",
-            vec!["queue.consume"],
+            vec![Scope::QueueConsume],
         );
         let response = svc.reserve(request).await.unwrap().into_inner();
         assert!(response.reservation.is_none());
@@ -355,7 +355,7 @@ mod tests {
                 name: "orders".into(),
             },
             "worker-1",
-            vec!["queue.create"],
+            vec![Scope::QueueCreate],
         ))
         .await
         .unwrap();
@@ -365,7 +365,7 @@ mod tests {
                 payload: b"hello".to_vec(),
             },
             "worker-1",
-            vec!["queue.produce"],
+            vec![Scope::QueueProduce],
         ))
         .await
         .unwrap();
@@ -375,7 +375,7 @@ mod tests {
                 queue_name: "orders".into(),
             },
             "worker-1",
-            vec!["queue.consume"],
+            vec![Scope::QueueConsume],
         );
         let response = svc.reserve(request).await.unwrap().into_inner();
 
@@ -392,7 +392,7 @@ mod tests {
                 queue_name: "missing".into(),
             },
             "worker-1",
-            vec!["queue.consume"],
+            vec![Scope::QueueConsume],
         );
         let result = svc.reserve(request).await;
         assert_eq!(expect_err(result).code(), Code::NotFound);
@@ -417,7 +417,7 @@ mod tests {
                 reservation_id: "r1".into(),
             },
             "worker-1",
-            vec!["queue.produce"],
+            vec![Scope::QueueProduce],
         );
         let result = svc.ack(request).await;
         assert_eq!(expect_err(result).code(), Code::Unauthenticated);
@@ -431,7 +431,7 @@ mod tests {
                 name: "orders".into(),
             },
             "worker-1",
-            vec!["queue.create"],
+            vec![Scope::QueueCreate],
         ))
         .await
         .unwrap();
@@ -441,7 +441,7 @@ mod tests {
                 payload: vec![1],
             },
             "worker-1",
-            vec!["queue.produce"],
+            vec![Scope::QueueProduce],
         ))
         .await
         .unwrap();
@@ -451,7 +451,7 @@ mod tests {
                 queue_name: "orders".into(),
             },
             "worker-1",
-            vec!["queue.consume"],
+            vec![Scope::QueueConsume],
         );
         let reservation = svc
             .reserve(reserve_request)
@@ -466,7 +466,7 @@ mod tests {
                 reservation_id: reservation.reservation_id,
             },
             "worker-1",
-            vec!["queue.consume"],
+            vec![Scope::QueueConsume],
         );
         let response = svc.ack(ack_request).await;
         assert!(response.is_ok());
@@ -480,7 +480,7 @@ mod tests {
                 name: "orders".into(),
             },
             "worker-1",
-            vec!["queue.create"],
+            vec![Scope::QueueCreate],
         ))
         .await
         .unwrap();
@@ -490,7 +490,7 @@ mod tests {
                 payload: vec![1],
             },
             "worker-1",
-            vec!["queue.produce"],
+            vec![Scope::QueueProduce],
         ))
         .await
         .unwrap();
@@ -500,7 +500,7 @@ mod tests {
                 queue_name: "orders".into(),
             },
             "worker-1",
-            vec!["queue.consume"],
+            vec![Scope::QueueConsume],
         );
         let reservation = svc
             .reserve(reserve_request)
@@ -515,7 +515,7 @@ mod tests {
                 reservation_id: reservation.reservation_id,
             },
             "worker-2",
-            vec!["queue.consume"],
+            vec![Scope::QueueConsume],
         );
         let result = svc.ack(ack_request).await;
         assert_eq!(expect_err(result).code(), Code::PermissionDenied);
@@ -529,7 +529,7 @@ mod tests {
                 reservation_id: "missing".into(),
             },
             "worker-1",
-            vec!["queue.consume"],
+            vec![Scope::QueueConsume],
         );
         let result = svc.ack(request).await;
         assert_eq!(expect_err(result).code(), Code::NotFound);

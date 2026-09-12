@@ -7,6 +7,7 @@ import (
 	"uuid"
 
 	"github.com/noahlavelle/qer/gen/openapi"
+	qerv1 "github.com/noahlavelle/qer/gen/qer/v1"
 	"github.com/noahlavelle/qer/internal/auth"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
@@ -71,7 +72,7 @@ func (s *Server) AttachConsumer(
 ) (openapi.AttachConsumerResponseObject, error) {
 	token, err := s.auth.SignWithScopes(
 		uuid.NewV4().String(),
-		[]string{"queue.consume"},
+		[]qerv1.Scope{qerv1.Scope_QUEUE_CONSUME},
 	)
 	if err != nil {
 		return openapi.AttachConsumer500JSONResponse{},
@@ -90,7 +91,10 @@ func (s *Server) AttachProducer(
 ) (openapi.AttachProducerResponseObject, error) {
 	token, err := s.auth.SignWithScopes(
 		uuid.NewV4().String(),
-		[]string{"queue.create", "queue.produce"},
+		[]qerv1.Scope{
+			qerv1.Scope_QUEUE_CREATE,
+			qerv1.Scope_QUEUE_PRODUCE,
+		},
 	)
 	if err != nil {
 		return openapi.AttachProducer500JSONResponse{},
