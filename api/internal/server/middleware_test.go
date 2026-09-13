@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	qerv1 "github.com/noahlavelle/qer/gen/qer/v1"
 	"github.com/noahlavelle/qer/internal/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -79,7 +80,7 @@ func TestWorkerTokenMiddleware_InvalidToken(t *testing.T) {
 func TestWorkerTokenMiddleware_ValidUnexpiredToken(t *testing.T) {
 	s := &Server{auth: newTestAuthenticator(5 * time.Minute)}
 
-	token, err := s.auth.SignWithScopes("worker-1", []string{"queue.produce"})
+	token, err := s.auth.SignWithScopes("worker-1", []qerv1.Scope{qerv1.Scope_QUEUE_PRODUCE})
 	require.NoError(t, err)
 
 	var gotToken string
@@ -103,7 +104,7 @@ func TestWorkerTokenMiddleware_ExpiredTokenIsRefreshed(t *testing.T) {
 	s := &Server{auth: newTestAuthenticator(5 * time.Minute)}
 
 	expiredTokenIssuer := newTestAuthenticator(-1 * time.Minute)
-	expiredToken, err := expiredTokenIssuer.SignWithScopes("worker-1", []string{"queue.produce"})
+	expiredToken, err := expiredTokenIssuer.SignWithScopes("worker-1", []qerv1.Scope{qerv1.Scope_QUEUE_PRODUCE})
 	require.NoError(t, err)
 
 	var gotToken string
@@ -129,14 +130,14 @@ func TestWorkerTokenMiddleware_ExpiredTokenIsRefreshed(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, claims.ExpiresAt.Time.After(time.Now()))
 	assert.Equal(t, "worker-1", claims.Subject)
-	assert.Equal(t, []string{"queue.produce"}, claims.Scopes)
+	assert.Equal(t, []qerv1.Scope{qerv1.Scope_QUEUE_PRODUCE}, claims.Scopes)
 }
 
 func TestWorkerTokenMiddleware_AppliesToAllWorkerAuthedOperations(t *testing.T) {
 	s := &Server{auth: newTestAuthenticator(5 * time.Minute)}
 
 	expiredTokenIssuer := newTestAuthenticator(-1 * time.Minute)
-	token, err := expiredTokenIssuer.SignWithScopes("worker-1", []string{"queue.produce"})
+	token, err := expiredTokenIssuer.SignWithScopes("worker-1", []qerv1.Scope{qerv1.Scope_QUEUE_PRODUCE})
 	require.NoError(t, err)
 
 	for _, operationID := range []string{"CreateQueue", "PutJob", "ReserveJob", "AckJob"} {

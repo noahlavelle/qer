@@ -10,6 +10,8 @@ import (
 	qerv1 "github.com/noahlavelle/qer/gen/qer/v1"
 	"github.com/noahlavelle/qer/internal/auth"
 	openapi_types "github.com/oapi-codegen/runtime/types"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type Server struct {
@@ -112,6 +114,15 @@ func (s *Server) CreateQueue(
 	request openapi.CreateQueueRequestObject,
 ) (openapi.CreateQueueResponseObject, error) {
 	if _, err := s.engine.CreateQueue(ctx, request.Body.Name); err != nil {
+		if st, ok := status.FromError(err); ok && st.Code() == codes.AlreadyExists {
+			return openapi.CreateQueue409JSONResponse{
+				Body: openapi.ErrorResponse{
+					Code:    "queue_exists",
+					Message: st.Message(),
+				},
+			}, nil
+		}
+
 		return openapi.CreateQueue500JSONResponse{},
 			fmt.Errorf("create queue: %w", err)
 	}
