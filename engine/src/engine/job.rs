@@ -4,6 +4,10 @@ use uuid::Uuid;
 pub struct JobID(String);
 
 impl JobID {
+    pub fn new(value: String) -> Self {
+        Self(value)
+    }
+
     pub fn generate() -> Self {
         Self(Uuid::now_v7().to_string())
     }
@@ -19,15 +23,15 @@ impl From<JobID> for String {
     }
 }
 
-impl Default for JobID {
-    fn default() -> Self {
-        Self::generate()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_wraps_the_given_value() {
+        let id = JobID::new("custom-id".to_owned());
+        assert_eq!(id.as_str(), "custom-id");
+    }
 
     #[test]
     fn new_generates_nonempty_id() {
@@ -40,11 +44,5 @@ mod tests {
         let a = JobID::generate();
         let b = JobID::generate();
         assert_ne!(a.as_str(), b.as_str());
-    }
-
-    #[test]
-    fn default_generates_an_id() {
-        let id = JobID::default();
-        assert!(!id.as_str().is_empty());
     }
 }

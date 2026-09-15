@@ -7,8 +7,10 @@ use sqlx::{
 
 use crate::engine::StoreError;
 
-pub mod payload;
+mod payload;
 mod records;
+
+pub use payload::PostgresPayloadStore;
 
 pub async fn connect(database_url: &str) -> Result<PgPool, StoreError> {
     let options = PgConnectOptions::from_str(database_url)?.ssl_mode(PgSslMode::Disable);

@@ -3,7 +3,6 @@ use tonic::async_trait;
 
 use crate::engine::{JobID, QueueID, ReservationID, WorkerID};
 
-pub mod memory;
 pub mod postgres;
 pub mod redis;
 
@@ -31,6 +30,8 @@ pub enum StoreError {
     Postgres(#[from] sqlx::Error),
     #[error("migration error: {0}")]
     Migration(#[from] sqlx::migrate::MigrateError),
+    #[error("redis error: {0}")]
+    Redis(#[from] redisclient::RedisError),
 }
 
 #[async_trait]

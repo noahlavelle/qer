@@ -1,23 +1,24 @@
-use sqlx::PgPool;
 use std::sync::Arc;
+
+use redisclient::aio::MultiplexedConnection;
+use sqlx::PgPool;
 use thiserror::Error;
+
+use crate::engine::store::{
+    MetadataStore, PayloadStore, postgres::PostgresPayloadStore, redis::RedisMetadataStore,
+};
 
 mod job;
 mod queue;
 mod reservation;
-mod store;
+pub mod store;
 mod worker;
 
 pub use job::JobID;
 pub use queue::{QueueID, QueueIDError};
 pub use reservation::{Reservation, ReservationID, ReservationIDError};
 pub use store::StoreError;
-pub use store::postgres::connect;
 pub use worker::{WorkerID, WorkerIDError};
-
-use crate::engine::store::{
-    MetadataStore, PayloadStore, memory::InMemoryStore, postgres::payload::PostgresPayloadStore,
-};
 
 #[derive(Error, Debug)]
 pub enum EngineError {
@@ -35,10 +36,10 @@ impl Engine {
         Self { metadata, payload }
     }
 
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(redis_conn: MultiplexedConnection, db_pool: PgPool) -> Self {
         Self::from_stores(
-            Arc::new(InMemoryStore::new()),
-            Arc::new(PostgresPayloadStore::new(pool)),
+            Arc::new(RedisMetadataStore::new(redis_conn)),
+            Arc::new(PostgresPayloadStore::new(db_pool)),
         )
     }
 
@@ -168,9 +169,54 @@ pub(crate) async fn test_pool() -> PgPool {
 }
 
 #[cfg(test)]
+static TEST_REDIS_URL: tokio::sync::OnceCell<String> = tokio::sync::OnceCell::const_new();
+
+#[cfg(test)]
+async fn test_redis_container_url() -> &'static str {
+    TEST_REDIS_URL
+        .get_or_init(|| async {
+            use testcontainers_modules::{redis::Redis, testcontainers::runners::AsyncRunner};
+
+            let container = Redis::default()
+                .start()
+                .await
+                .expect("failed to start redis container");
+            let host = container
+                .get_host()
+                .await
+                .expect("failed to get container host");
+            let port = container
+                .get_host_port_ipv4(testcontainers_modules::redis::REDIS_PORT)
+                .await
+                .expect("failed to get container port");
+
+            // Keep the container running for the life of the test binary instead of
+            // letting it stop when this initializer's local goes out of scope.
+            std::mem::forget(container);
+
+            format!("redis://{host}:{port}")
+        })
+        .await
+}
+
+#[cfg(test)]
+pub(crate) async fn test_redis_conn() -> MultiplexedConnection {
+    use redisclient::AsyncCommands;
+
+    let mut conn = store::redis::connect(test_redis_container_url().await)
+        .await
+        .expect("failed to connect to redis test container");
+    conn.flushdb::<()>()
+        .await
+        .expect("failed to flush redis test database");
+
+    conn
+}
+
+#[cfg(test)]
 pub(crate) async fn test_engine() -> Engine {
     Engine::from_stores(
-        Arc::new(InMemoryStore::new()),
+        Arc::new(RedisMetadataStore::new(test_redis_conn().await)),
         Arc::new(PostgresPayloadStore::new(test_pool().await)),
     )
 }

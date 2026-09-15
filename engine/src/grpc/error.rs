@@ -24,6 +24,8 @@ impl From<EngineError> for Status {
                 Status::not_found(format!("job not found: {id}"))
             }
             EngineError::Store(StoreError::Postgres(error)) => Status::internal(error.to_string()),
+            EngineError::Store(StoreError::Migration(error)) => Status::internal(error.to_string()),
+            EngineError::Store(StoreError::Redis(error)) => Status::internal(error.to_string()),
             _ => Status::internal("unknown"),
         }
     }
@@ -83,6 +85,23 @@ mod tests {
     fn access_denied_maps_to_permission_denied() {
         let status: Status = EngineError::Store(StoreError::AccessDenied).into();
         assert_eq!(status.code(), Code::PermissionDenied);
+    }
+
+    #[test]
+    fn migration_error_maps_to_internal() {
+        let status: Status =
+            EngineError::Store(StoreError::Migration(sqlx::migrate::MigrateError::Dirty(1)))
+                .into();
+        assert_eq!(status.code(), Code::Internal);
+    }
+
+    #[test]
+    fn redis_error_maps_to_internal() {
+        let status: Status = EngineError::Store(StoreError::Redis(redisclient::RedisError::from(
+            (redisclient::ErrorKind::UnexpectedReturnType, "test"),
+        )))
+        .into();
+        assert_eq!(status.code(), Code::Internal);
     }
 
     #[test]
